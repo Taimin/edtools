@@ -5,6 +5,8 @@ from scipy import interpolate
 from skimage.registration import phase_cross_correlation
 import scipy.ndimage as ndimage
 from .update_xds import update_xds
+from instamatic.formats.mrc import read_image as read_mrc
+import traceback
 
 def read_adsc(fname: str) -> (np.array, dict):
     """read in the file."""
@@ -127,7 +129,7 @@ def find_peak_max(arr: np.ndarray, sigma: int, m: int = 50, w: int = 10, kind: i
 
     return c2 + c1 - w
 
-def find_beam_center(img: np.ndarray, sigma: int = 30, m: int = 100, kind: int = 3) -> (float, float):
+def find_beam_center(img: np.ndarray, sigma: int = 30, m: int = 100, kind: int = 3, thresh: int = 7000) -> (float, float):
     """Find the center of the primary beam in the image `img` The position is
     determined by summing along X/Y directions and finding the position along
     the two directions independently.
@@ -136,7 +138,7 @@ def find_beam_center(img: np.ndarray, sigma: int = 30, m: int = 100, kind: int =
     pimary beam with subpixel accuracy.
     """
     img_thresh = img.copy()
-    img_thresh[img_thresh<7000] = 0
+    img_thresh[img_thresh<thresh] = 0
     xx = np.sum(img_thresh, axis=1)
     yy = np.sum(img_thresh, axis=0)
 
@@ -206,48 +208,71 @@ def main():
                         action="store", type=float, nargs=2, dest="stretch",
                         help="Correct for the elliptical distortion")
 
+    parser.add_argument("-res", "--restore",
+                        action="store", type=bool, nargs=1, dest="restore",
+                        help="Restore orginal image before beam center correction")
+
     parser.set_defaults(match=None,
-                        stretch=None)
+                        stretch=None,
+                        restore=False)
 
     options = parser.parse_args()
     
     match = options.match
+    stretch = options.stretch
+    restore = options.restore
     args = options.args
 
     XDS_input_path = parse_args_for_fns(args = args, name="XDS.INP", match=match)
 
-    
-    for fn in XDS_input_path:
-        try:
+    if restore:
+        for fn in XDS_input_path:
+            original_path = fn.parent.parent/'RED'
             data_path = fn.parent/'data'
-            print(data_path)
+            print(original_path)
+            org_img_list = list(original_path.glob("*.mrc"))
             img_list = list(data_path.glob("*.img"))
-            img_first = str(img_list[0])
-            data, header = read_adsc(img_first)
-            center_x, center_y = find_beam_center(data)
-            #center_x, center_y = (268, 249)
-            template = data[int(round(center_x-16)):int(round(center_x+16)), 
-                            int(round(center_y-16)):int(round(center_y+16))].copy()
-            center_x_new, center_y_new = find_beam_center(template, sigma=5)
-            print(center_x_new, center_y_new)
-            update_xds(fn, jobs=(), center=(center_y-16+center_y_new+0.8, center_x-16+center_x_new+0.8))
-            
-            for img in img_list[1:]:
-                img = str(img)
-                data, header = read_adsc(img)
-                #center = find_beam_center(data)
-                #center_area = data[round(center_y)-10:round(center_y)+10, round(center_x)-10:round(center_x)+10]
-                center  = find_beam_center(data[int(round(center_x-16)):int(round(center_x+16)), 
-                                            int(round(center_y-16)):int(round(center_y+16))],sigma=5)
-                shift = (center_x_new-center[0], center_y_new-center[1])
-                #shift, error, phasediff = phase_cross_correlation(template, center_area, upsample_factor=10)
-                print(shift)
-                data = ndimage.shift(data, shift, output=np.uint16, mode='nearest')
-                header['BEAM_CENTER_X'] = center_y
-                header['BEAM_CENTER_Y'] = center_x
-                write_adsc(img, data, header)
-        except:
-            print(f'Beam center finding was interrupted: {data_path}')
+            _, header = read_adsc(img_list[0])
+            for orig_img, img in zip(org_img_list, img_list):
+                orig_data, _ = read_mrc(orig_img)
+                write_adsc(img, orig_data, header)
+    else:    
+        for fn in XDS_input_path:
+            try:
+                data_path = fn.parent/'data'
+                print(data_path)
+                img_list = list(data_path.glob("*.img"))
+                img_first = str(img_list[0])
+                data, header = read_adsc(img_first)
+                center_x, center_y = find_beam_center(data, thresh=0)
+                #for index, img in enumerate(img_list[1:], 1):
+                #    img = str(img)
+                #    data, header = read_adsc(img)
+                #    center  = find_beam_center(data, sigma=5)
+                #    shift = (center_x-center[0], center_y-center[1])
+                #    print(f'Index: {index}, Shift: {shift}')
+                #    data = ndimage.shift(data, shift, output=np.uint16, mode='nearest')
+
+                template = data[int(round(center_x-16)):int(round(center_x+16)), 
+                                int(round(center_y-16)):int(round(center_y+16))].copy()
+                center_x_new, center_y_new = find_beam_center(template, sigma=5)
+                print(center_x_new, center_y_new)
+                update_xds(fn, jobs=(), center=(center_y-16+center_y_new+0.8, center_x-16+center_x_new+0.8))
+                
+                for img in img_list[1:]:
+                    img = str(img)
+                    data, header = read_adsc(img)
+                    center  = find_beam_center(data[int(round(center_x-16)):int(round(center_x+16)), 
+                                                int(round(center_y-16)):int(round(center_y+16))], sigma=5, thresh=2000)
+                    shift = (center_x_new-center[0], center_y_new-center[1])
+                    print(shift)
+                    data = ndimage.shift(data, shift, output=np.uint16, mode='nearest')
+                    header['BEAM_CENTER_X'] = center_y
+                    header['BEAM_CENTER_Y'] = center_x
+                    write_adsc(img, data, header)
+            except:
+                traceback.print_exc()
+                print(f'Beam center finding was interrupted: {data_path}')
 
 if __name__ == '__main__':
     main()

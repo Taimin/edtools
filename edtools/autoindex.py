@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 import socket
 import sys, os
+import traceback
 from pathlib import Path
 from .utils import parse_args_for_fns
 
@@ -112,6 +113,8 @@ def parse_xds(path: str, sequence: int=0) -> None:
                         msg = f"{sequence: 4d}: {drc} -> Error in {job}: {error}"
                         print(msg)
                         return
+        with open(drc.parent.parent / "index_results.log", "a") as f:
+            print(msg, file=f)
 
 
 
@@ -151,8 +154,8 @@ def xds_index(path: str, sequence: int=0, clear: bool=True, parallel: bool=True)
 
     try:
         parse_xds(path, sequence=sequence)
-    except Exception as e:
-        print("ERROR:", e)
+    except Exception:
+        traceback.print_exc()
 
 
 
@@ -206,6 +209,10 @@ def main():
         print(f"Filtered directories which have already been processed, {len(fns)} left")
 
     max_connections = 1
+
+    drc = fns[0].parent
+    with open(drc.parent.parent / "index_results.log", "w") as f:
+        pass
 
     with ThreadPoolExecutor(max_workers=max_connections) as executor:
         futures = []

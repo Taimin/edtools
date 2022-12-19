@@ -35,7 +35,8 @@ def update_xds(fn,
                refine_corr=None,
                trusted_region=None,
                trusted_pixels=None,
-               reidx=None):
+               reidx=None,
+               ref_data=None):
     shutil.copyfile(fn, fn.with_name("XDS.INP~"))
     
     lines = open(fn, "r", encoding = 'cp1252').readlines()
@@ -143,6 +144,8 @@ def update_xds(fn,
             line = f"REFLECTING_RANGE_E.S.D.= {mosaicity[1]:.3f}\n"
         elif reidx and "REIDX=" in line:
             line = f"REIDX= {' '.join(reidx)}\n"
+        elif ref_data and "REFERENCE_DATA_SET=" in line:
+            line = f"REFERENCE_DATA_SET= {ref_data[0]}\n"
         if "Cryst." in line:
             line = ""
 
@@ -288,6 +291,10 @@ def main():
                         action="store", type=str, nargs=12, dest="reidx",
                         help="Update the trusted pixels.")
 
+    parser.add_argument("-ref", "--ref_data",
+                        action="store", type=str, nargs=1, dest="ref_data",
+                        help="Update the trusted pixels.")
+
     parser.set_defaults(cell=None,
                         spgr=None,
                         comment=False,
@@ -314,7 +321,8 @@ def main():
                         refine_index=None,
                         trusted_region=None,
                         trusted_pixels=None,
-                        reidx=None)
+                        reidx=None,
+                        ref_data=None,)
     
     options = parser.parse_args()
     spgr = options.spgr
@@ -347,6 +355,7 @@ def main():
     trusted_region = options.trusted_region
     trusted_pixels = options.trusted_pixels
     reidx = options.reidx
+    ref_data = options.ref_data
 
     fns = parse_args_for_fns(fns, name="XDS.INP", match=match)
 
@@ -382,7 +391,8 @@ def main():
                    refine_corr=refine_corr,
                    trusted_region=trusted_region,
                    trusted_pixels=trusted_pixels,
-                   reidx=reidx)
+                   reidx=reidx,
+                   ref_data=ref_data)
 
     print(f"\033[KUpdated {len(fns)} files")
 

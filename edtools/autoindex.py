@@ -77,6 +77,7 @@ def parse_xds(path: str, sequence: int=0) -> None:
     correct_lp = drc / "CORRECT.LP"
 
     lookBack = 160
+    msg = None
 
     # rlock prevents messages getting mangled with 
     # simultaneous print statements from different threads
@@ -114,7 +115,8 @@ def parse_xds(path: str, sequence: int=0) -> None:
                         print(msg)
                         return
         with open(drc.parent.parent / "index_results.log", "a") as f:
-            print(msg, file=f)
+            if msg is not None:
+                print(msg, file=f)
 
 
 

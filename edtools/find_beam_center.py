@@ -267,8 +267,8 @@ def main():
                     shift = (center_x_new-center[0], center_y_new-center[1])
                     print(shift)
                     data = ndimage.shift(data, shift, output=np.uint16, mode='nearest')
-                    header['BEAM_CENTER_X'] = center_y
-                    header['BEAM_CENTER_Y'] = center_x
+                    header['BEAM_CENTER_X'] = header['DENZO_X_BEAM']
+                    header['BEAM_CENTER_Y'] = header['DENZO_Y_BEAM']
                     write_adsc(img, data, header)
             except:
                 traceback.print_exc()

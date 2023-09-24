@@ -563,6 +563,7 @@ class ScatteringFactorGUI(LabelFrame):
         Hoverbox(tmp, 'Charge in integral: some elements have their own charged parameters and it is more accurate than using neutral scattering factor.')
         Spinbox(frame, width=5, textvariable=self.var_frac_charge, from_=-1.0, to=1.0, increment=0.01).grid(row=7, column=14, columnspan=3, sticky='W')
 
+        Checkbutton(frame, text='Save', variable=self.var_save_txt).grid(row=8, column=7, columnspan=3, sticky='E')
         tmp = Button(frame, text="Read", width=9, command=self.read)
         tmp.grid(row=8, column=10, columnspan=3, sticky='E')
         Hoverbox(tmp, 'Read a file with only atomic scattering factor.')
@@ -596,6 +597,7 @@ class ScatteringFactorGUI(LabelFrame):
         self.var_s_range = StringVar(value="0.04-1Å")
         self.var_s_points = IntVar(value=2000)
         self.var_param = StringVar(value='4p_electron')
+        self.var_save_txt = BooleanVar(value=False)
 
     def load_lib(self):
         file_name = tk.filedialog.askopenfilename(initialdir='.', title='Select file', 
@@ -735,6 +737,10 @@ class ScatteringFactorGUI(LabelFrame):
         print(f'Base parameter: {self.param}')
         self.ax.legend()
         self.canvas.draw()
+
+        if self.var_save_txt.get():
+            np.savetxt('scattering_factor.csv', np.array([self.s, self.f]).T, fmt='%.4e')
+
 
     def clear_plot(self):
         self.ax.cla()

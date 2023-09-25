@@ -55,6 +55,7 @@ setup(
             'edtools.find_rotation_axis = edtools.find_rotation_axis:main',
             'edtools.find_beam_center  = edtools.find_beam_center:main',
             'edtools.scattering_factor  = edtools.scattering_factor:main',
+            'edtools.update_dials  = edtools.update_dials:main',
             'edtools.cif_tools = edtools.cif_tools:main']},
     packages=['edtools'],
     package_dir={

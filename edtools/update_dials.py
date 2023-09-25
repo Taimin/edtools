@@ -10,7 +10,7 @@ from instamatic.formats import read_image
 from instamatic.formats import write_adsc
 from instamatic.formats import write_tiff
 from instamatic.processing import apply_stretch_correction
-from instamatic.processing.stretch_correction import affine_transform_ellipse_to_circle
+from instamatic.processing.ImgConversion import rotation_axis_to_xyz
 from instamatic.tools import find_beam_center, find_subranges
 
 from .utils import parse_args_for_fns
@@ -29,7 +29,7 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
     distance = (1 / wavelength) * (physical_pixelsize / pixelsize)
 
     for img_name in img_name_list:
-        img, _ = read_mrc(img_name)
+        img, _ = read_image(img_name)
         img_list.append((img_name.name.split('.')[0], img))
 
     # TODO: The interpolation will blur out the diffraction pattern or make some artifacts...
@@ -42,9 +42,9 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
                         int(round(center_y-16)):int(round(center_y+16))].copy()
                 center_x_first, center_y_first = find_beam_center(template, sigma=5)
             else:
-                center  = find_beam_center(img[int(round(center_x-16)):int(round(center_x+16)), 
+                center_pos  = find_beam_center(img[int(round(center_x-16)):int(round(center_x+16)), 
                                             int(round(center_y-16)):int(round(center_y+16))], sigma=5)
-                shift = (center_x_first-center[0], center_y_first-center[1])
+                shift = (center_x_first-center_pos[0], center_y_first-center_pos[1])
                 #shift, error, phasediff = phase_cross_correlation(template, center_area, upsample_factor=10)
                 print(shift)
                 img = ndimage.shift(img, shift, order=1, output=np.uint16, mode='nearest')
@@ -89,11 +89,11 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
         header['DENZO_Y_BEAM'] = f'{center_y*physical_pixelsize:.4f}'
         write_adsc(smv_folder/'data'/(img_name+'.img'), img, header)
 
-    scanranges = find_subranges(zip(*img_name_list)[0])
-    scanranges = [int(angle) for angle in scanrages]
+    scanranges = [int(num) for num in list(zip(*img_list))[0]]
     observed_range = set(scanranges)
     complete_range = set(range(min(observed_range), max(observed_range) + 1))
     missing_range = observed_range ^ complete_range
+    scanranges = find_subranges(scanranges)
     scanrange = ' '.join(f'scan_range={i},{j}' for i, j in scanranges)
     excludeimages = ','.join(str(n) for n in missing_range)
     rot_x, rot_y, rot_z = rotation_axis_to_xyz(axis, setting='dials')
@@ -103,24 +103,24 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
         print(f'set scan_range={scanrange}', file=f)
         print(f'set exclude_images=exclude_images={excludeimages}', file=f)
         print(f'set rotation_axis=geometry.goniometer.axes={rot_x:.4f},{rot_y:.4f},{rot_z:.4f}', file=f)
-        print('dials.import template=./data/#####.img %rotation_axis%', file=f)
-        print('dials.find_spots imported.expt %scan_range%', file=f)
-        print('dials.index imported.expt strong.refl max_lattices=3', file=f)
+        print(f'call dials.import template=./data/#####.img %rotation_axis%', file=f)
+        print(f'call dials.find_spots imported.expt %scan_range%', file=f)
+        print(f'call dials.index imported.expt strong.refl max_lattices=3', file=f)
         if refine:
-            print('dials.refine_bravais_settings indexed.expt indexed.refl', file=f)
-            print('dials.refine indexed.expt indexed.refl', file=f)
+            print(f'call dials.refine_bravais_settings indexed.expt indexed.refl', file=f)
+            print(f'call dials.refine indexed.expt indexed.refl', file=f)
         if integrate:
-            print('dials.integrate refined.expt refined.refl nproc=8', file=f)
+            print(f'call dials.integrate refined.expt refined.refl nproc=8', file=f)
         if symmetry:
-            print('dials.symmetry integrated.expt integrated.refl', file=f)
+            print(f'call dials.symmetry integrated.expt integrated.refl', file=f)
         if scale:
-            print('dials.scale symmetrized.expt symmetrized.refl', file=f)
+            print(f'call dials.scale symmetrized.expt symmetrized.refl', file=f)
         if merge:
-            print('dials.merge scaled.expt scaled.refl', file=f)
+            print(f'call dials.merge scaled.expt scaled.refl', file=f)
         if report:
-            print('dials.report scaled.expt scaled.refl', file=f)
+            print(f'call dials.report scaled.expt scaled.refl', file=f)
         if export:
-            print('dials.export scaled.expt scaled.refl', file=f)
+            print(f'call dials.export scaled.expt scaled.refl', file=f)
     empty = np.zeros_like(img)
     for n in missing_range:
         write_adsc(smv_folder/'data'/(f'{n:05d}'+'.img'), empty, header)
@@ -136,6 +136,10 @@ def main():
                         help="List of dials_process.bat files or list of directories. If a list of directories is given "
                         "the program will find all dials_process.bat files in the subdirectories. If no arguments are given "
                         "the current directory is used as a starting point.")
+
+    parser.add_argument("-m", "--match",
+                        action="store", type=str, dest="match",
+                        help="Include the dials_process.bat files only if they are in the given directories (i.e. --match DIALS_reprocessed)")
 
     parser.add_argument("-cent", "--center",
                         action="store", type=bool, dest="center",
@@ -178,8 +182,22 @@ def main():
                         help="Export the data")
 
     parser.set_defaults(integrate=False, center=False, stretch=False, refine=False,
-                        symmetry=False, scale=False, merge=False, report=False, export=False
-                        name='Medipix3',)
+                        symmetry=False, scale=False, merge=False, report=False, export=False,
+                        name='Medipix3')
+
+    options = parser.parse_args()
+    fns = options.args
+    integrate = options.integrate
+    center = options.center
+    stretch = options.stretch
+    refine = options.refine
+    symmetry = options.symmetry
+    scale = options.scale
+    merge = options.merge
+    report = options.report
+    export = options.export
+    name = options.name
+    match = options.match
 
 
     fns = parse_args_for_fns(fns, name="summary.txt", match=match)
@@ -187,18 +205,18 @@ def main():
     for fn in fns:
         lines = open(fn, "r", encoding = 'cp1252').readlines()
         for line in lines:
-            if 'PixelSize' in line:
+            if 'Pixelsize' in line:
                 pixelsize = float(line.split(' ')[1])
             elif 'Step size' in line:
-                osc_angle = float(line.split(' ')[1])
+                osc_angle = float(line.split(' ')[2])
             elif 'Physical' in line:
                 physical_pixelsize = float(line.split(' ')[2])
             elif 'Wavelength' in line:
                 wavelength = float(line.split(' ')[1])
             elif 'Exposure' in line:
-                exposure = float(line.split(' ')[1])
+                exposure = float(line.split(' ')[2])
             elif 'Rotation axis' in line:
-                axis = float(line.split(' ')[1])
+                axis = float(line.split(' ')[2])
         lines = open(fn.parent/'RED'/'1.ed3d', "r", encoding = 'cp1252').readlines()
         for line in lines:
             if '00001.mrc' in line:

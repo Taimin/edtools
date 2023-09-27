@@ -7,7 +7,7 @@ from .utils import parse_args_for_fns
 
 import subprocess as sp
 
-from .extract_xds_info import dials_parser
+from .extract_dials_info import dials_parser
 
 try:
     from instamatic import config

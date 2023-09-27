@@ -9,9 +9,8 @@ spglib = space_group_lib()
 
 
 class dials_parser(object):
-    """docstring for xds_parser"""
+    """docstring for DIALS_parser"""
     def __init__(self, filename):
-        super(xds_parser, self).__init__()
         self.ios_threshold = 0.8
 
         self.filename = Path(filename).resolve()
@@ -196,7 +195,7 @@ class dials_parser(object):
 
 
 def cells_to_excel(ps, fn="cells.xlsx"):
-    """Takes a list of `xds_parser` instances and writes the cell
+    """Takes a list of `DIALS_parser` instances and writes the cell
     parameters to an excel file `cells.xlsx`.
     """
     d = {}
@@ -218,7 +217,7 @@ def cells_to_excel(ps, fn="cells.xlsx"):
 
 
 def cells_to_cellparm(ps):
-    """Takes a list of `xds_parser` instances and writes the cell
+    """Takes a list of `DIALS_parser` instances and writes the cell
     parameters to an instruction file `CELLPARM.INP` for the program
     `cellparm`.
     """
@@ -256,14 +255,14 @@ def cells_to_yaml(ps, fn="cells.yaml"):
     print(f"Wrote {i} cells to file {fn}")
 
 
-def gather_xds_ascii(ps, min_completeness=10.0, min_cchalf=90.0, gather=False):
-    """Takes a list of `xds_parser` instances and gathers the
-    corresponding `XDS_ASCII.HKL` files into the current directory.
+def gather_DIALS_refl(ps, min_completeness=10.0, min_cchalf=90.0, gather=False):
+    """Takes a list of `DIALS_parser` instances and gathers the
+    corresponding `DIALS_ASCII.HKL` files into the current directory.
     The data source and numbering scheme is summarized in the file `filelist.txt`.
     """
     fn = "filelist.txt"
 
-    # gather xds_ascii and prepare filelist
+    # gather DIALS_ascii and prepare filelist
     n = 0
     with open(fn, "w") as f:
         for i, p in enumerate(ps):
@@ -278,8 +277,8 @@ def gather_xds_ascii(ps, min_completeness=10.0, min_cchalf=90.0, gather=False):
             if completeness < min_completeness:
                 continue
 
-            src = p.filename.with_name("XDS_ASCII.HKL")
-            dst = f"{i:02d}_XDS_ASCII.HKL"
+            src = p.filename.with_name("DIALS_ASCII.HKL")
+            dst = f"{i:02d}_DIALS_ASCII.HKL"
             if gather:
                 shutil.copy(src, dst)
                 ascii_name = dst
@@ -344,9 +343,9 @@ def cells_to_yaml_xparm(uc, fn="cells_xparm.yaml"):
 
         d["directory"] = str(Path(p[1]).parent.resolve())
 
-        """get rotation range from XDS.INP"""
-        xdsinp = Path(p[1]).parent / "XDS.INP"
-        with open(xdsinp, "r") as f:
+        """get rotation range from DIALS.INP"""
+        DIALSinp = Path(p[1]).parent / "DIALS.INP"
+        with open(DIALSinp, "r") as f:
             for line in f:
                 if line.startswith("DATA_RANGE="):
                     datarange = list(map(float, line.strip("\n").split()[1:]))
@@ -375,21 +374,21 @@ def main():
 
     parser.add_argument("args",
                         type=str, nargs="*", metavar="FILE",
-                        help="List of CORRECT.LP files or list of directories. If a list of directories is given "
+                        help="List of log files or list of directories. If a list of directories is given "
                         "the program will find all CORRECT.LP files in the subdirectories. If no arguments are given "
                         "the current directory is used as a starting point.")
 
     parser.add_argument("--match",
                         action="store", type=str, dest="match",
-                        help="Include the CORRECT.LP files only if they are in the given directories (i.e. --match SMV_reprocessed)")
+                        help="Include the log files only if they are in the given directories (i.e. --match SMV_reprocessed)")
 
     parser.add_argument("-g", "--gather",
                         action="store_true", dest="gather",
-                        help="Gather XDS_ASCII.HKL files in local directory.")
+                        help="Gather refl files in local directory.")
 
     parser.add_argument("-x", "--xparm",
                         action="store_true", dest="xparm",
-                        help="extract unit cell info from XPARM.XDS instead of CORRECT.LP. NOTE!! Only aimed for first step clustering.")
+                        help="extract unit cell info from XPARM.DIALS instead of CORRECT.LP. NOTE!! Only aimed for first step clustering.")
 
     parser.set_defaults(match=None)
 
@@ -401,7 +400,7 @@ def main():
     args = options.args
 
     if xparm:
-        fns = parse_args_for_fns(args, name="XPARM.XDS", match=match)
+        fns = parse_args_for_fns(args, name="XPARM.DIALS", match=match)
         foundCells_and_Path = []
 
         for fn in fns:
@@ -409,38 +408,38 @@ def main():
             foundCells_and_Path.append([uc, fn])
 
         cells_to_yaml_xparm(uc = foundCells_and_Path, fn = "cells_xparm.yaml")
-        print("Cell information from XPARM.XDS parsed to cells_xparm.yaml")
+        print("Cell information from XPARM.DIALS parsed to cells_xparm.yaml")
 
     else:
         fns = parse_args_for_fns(args, name="CORRECT.LP", match=match)
 
-        xdsall = []
+        DIALSall = []
         for fn in fns:
             try:
-                p = xds_parser(fn)
+                p = DIALS_parser(fn)
             except UnboundLocalError as e:
                 print(e)
                 continue
             else:
                 if p and p.d:
-                    xdsall.append(p)
+                    DIALSall.append(p)
 
-        for i, p in enumerate(xdsall):
+        for i, p in enumerate(DIALSall):
             i += 1
             print(p.cell_info(sequence=i))
 
-        print(xds_parser.info_header())
-        for i, p in enumerate(xdsall):
+        print(DIALS_parser.info_header())
+        for i, p in enumerate(DIALSall):
             i += 1
             print(p.integration_info(sequence=i, filename=True))
 
-        cells_to_excel(xdsall)
-        # cells_to_cellparm(xdsall)
-        cells_to_yaml(xdsall)
+        cells_to_excel(DIALSall)
+        # cells_to_cellparm(DIALSall)
+        cells_to_yaml(DIALSall)
 
-        gather_xds_ascii(xdsall, gather=gather)
+        gather_DIALS_ascii(DIALSall, gather=gather)
 
-        evaluate_symmetry(xdsall)
+        evaluate_symmetry(DIALSall)
         print("\n ** the score corresponds to the total number of indexed reflections.")
 
 

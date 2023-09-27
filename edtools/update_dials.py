@@ -199,24 +199,23 @@ def main():
     name = options.name
     match = options.match
 
-
     fns = parse_args_for_fns(fns, name="summary.txt", match=match)
 
     for fn in fns:
         lines = open(fn, "r", encoding = 'cp1252').readlines()
         for line in lines:
             if 'Pixelsize' in line:
-                pixelsize = float(line.split(' ')[1])
+                pixelsize = float(line.split()[1])
             elif 'Step size' in line:
-                osc_angle = float(line.split(' ')[2])
+                osc_angle = float(line.split()[2])
             elif 'Physical' in line:
-                physical_pixelsize = float(line.split(' ')[2])
+                physical_pixelsize = float(line.split()[2])
             elif 'Wavelength' in line:
-                wavelength = float(line.split(' ')[1])
+                wavelength = float(line.split()[1])
             elif 'Exposure' in line:
-                exposure = float(line.split(' ')[2])
+                exposure = float(line.split()[2])
             elif 'Rotation axis' in line:
-                axis = float(line.split(' ')[2])
+                axis = float(line.split()[2])
         lines = open(fn.parent/'RED'/'1.ed3d', "r", encoding = 'cp1252').readlines()
         for line in lines:
             if '00001.mrc' in line:

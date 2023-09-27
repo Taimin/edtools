@@ -2,130 +2,70 @@ from pathlib import Path
 import os
 import time
 import shutil
+import re
 from .utils import volume, parse_args_for_fns
 from .utils import space_group_lib
 
 spglib = space_group_lib()
 
 
-class dials_parser(object):
-    """docstring for DIALS_parser"""
-    def __init__(self, filename):
+class dials_parser:
+    """docstring for dials_parser"""
+    def __init__(self, filename, type='index'):
         self.ios_threshold = 0.8
 
         self.filename = Path(filename).resolve()
-        self.d = self.parse()
+        self.d = self.parse(type)
 
-    def parse(self):
-        ios_threshold = self.ios_threshold
-
+    def parse(self, type):
         fn = self.filename
+        with open(fn, "r") as f:
+            lines = f.readlines()
 
-        f = open(fn, "r")
-
-        in_block = False
-        block = []
+        crystals = []
+        line_start = []
+        line_end = []
 
         d = {}
+        d_list = []
 
-        cell, spgr = None, None
-        ISa = None
-        Boverall = None
+        for index, line in enumerate(lines):
+            if line.startswith("Indexed crystal models:"):
+                line_start.append(index)
+            elif line.startswith("Starting refinement (macro-cycle 1)"):
+                line_end.append(index)
 
-        for line in f:
-            if line.startswith(" SUBSET OF INTENSITY DATA WITH SIGNAL/NOISE >= -3.0 AS FUNCTION OF RESOLUTION"):
-                in_block = True
-                block = []
-            elif line.startswith("    total"):
-                block.append(line.strip("\n"))
-                in_block = False
-            elif line.endswith("as used by INTEGRATE\n"):
-                raw_cell = list(map(float, line.strip("\n").split()[1:7]))
-            elif line.startswith(" UNIT_CELL_CONSTANTS="):
-                cell = list(map(float, line.strip("\n").split()[1:7]))
-            elif line.startswith(" UNIT CELL PARAMETERS"):
-                cell = list(map(float, line.strip("\n").split()[3:9]))
-            elif line.startswith(" SPACE GROUP NUMBER"):
-                spgr = int(line.strip("\n").split()[-1])
-            elif line.startswith(" SPACE_GROUP_NUMBER="):
-                spgr = int(line.strip("\n").split()[1])
-            elif line.startswith(" DATA_RANGE="):
-                datarange = list(map(float, line.strip("\n").split()[1:]))
-            elif line.startswith(" OSCILLATION_RANGE"):
-                osc_angle = float(line.strip("\n").split()[-1])
-            elif line.startswith("     a        b          ISa"):
-                line = next(f)
-                inp = line.split()
-                ISa = float(inp[-1])
-            elif line.startswith("   WILSON LINE (using all data)"):
-                inp = line.split()
-                Boverall = float(inp[-3])
-            elif line.startswith("   --------------------------------------------------------------------------"):
-                line = next(f)
-                inp = line.split()
-                resolution_range = float(inp[0]), float(inp[1])
-
-            if in_block:
-                if line:
-                    block.append(line.strip("\n"))
-
-        d["ISa"] = ISa
-        d["Boverall"] = Boverall
-
-        dmin = 999
-
-        for line in block:
-            inp = line.split()
-            if len(inp) != 14:
-                continue
-
-            try:
-                res = float(inp[0])
-            except ValueError:
-                res = inp[0]
-                if res != "total":
-                    continue
-
-            res = float(inp[0]) if inp[0] != "total" else inp[0]
-            ntot, nuniq, completeness = int(inp[1]), int(inp[2]), float(inp[4].strip("%"))
-            ios, rmeas, cchalf = float(inp[8]), float(inp[9].strip("%")), float(inp[10].strip("*"))
-
-            if ios < ios_threshold and res != "total":
-                continue
-
-            if (res != "total") and (res < dmin):
-                shell = (dmin, res)
-                dmin = res
-
-            d[res] = {"ntot": ntot, "nuniq": nuniq, "completeness": completeness, "ios": ios, "rmeas": rmeas, "cchalf": cchalf}
-
-        if dmin == 999:
-            return
-
-        if not cell:
-            raise ValueError("No cell found")
-        if not spgr:
-            raise ValueError("No space group found")
-
-        d["outer"] = dmin
-        d["outer_shell"] = shell
-        try:
-            d["res_range"] = resolution_range
+        for start, end in zip(line_start, line_end):
+            if end > start:
+                crystals.append(lines[start:end])
+            else:
+                print('Check the index.log file')
+                return -1
+                
+        for crystal in crystals:
+            cell, spgr = None, None
+            for index, line in enumerate(crystal):
+                if line.startswith("model"):
+                    model_num = int(line.split()[1])
+                elif line.startswith("    Unit cell"):
+                    line = re.sub(r'\([^)]*\)', '', line)
+                    line = line.strip("\n").split()[2:8]
+                    line = [l.strip(',') for l in line]
+                    cell = list(map(float, line))
+                elif line.startswith("    Space group"):
+                    spgr = ''.join(line.strip("\n").split()[2:])
+                elif line.startswith("|   Imageset"):
+                    infos = [info.strip() for info in crystal[index+2].split('|')]
+                    d['indexed'] = int(infos[1])
+                    d['unindexed'] = int(infos[2])
             d["volume"] = volume(cell)
             d["cell"] = cell
-            d["raw_cell"] = raw_cell
-            d["raw_volume"] = volume(raw_cell)
             d["spgr"] = spgr
-        except UnboundLocalError as e:
-            print(e)
-            return
-        d["fn"] = fn
-
-        nframes = datarange[1] - datarange[0]
-        rotationrange = nframes * osc_angle
-        d["rot_range"] = rotationrange
-
-        return d
+            d["model_num"] = model_num
+            d["fn"] = fn
+            d_list.append(d)
+        
+        return d_list
 
     @staticmethod
     def info_header(hline=True):
@@ -140,10 +80,14 @@ class dials_parser(object):
     def cell_info(self, sequence=0):
         d = self.d
         i = sequence
-        fn = self.filename
-        s = f"{i: 4d}: {fn.parents[0]}  # {time.ctime(os.path.getmtime(fn))}\n"
-        s += "Spgr {: 4d} - Cell {:10.2f}{:10.2f}{:10.2f}{:10.2f}{:10.2f}{:10.2f} - Vol {:10.2f}\n".format(d["spgr"], *d["cell"], d["volume"])
-        return s
+        s_list = []
+        for crystal in d:
+            fn = self.filename
+            model_num = crystal["model_num"]
+            s = f"{i: 4d}: {fn.parents[0]} # {model_num} # {time.ctime(os.path.getmtime(fn))}\n"
+            s += "Spgr {} - Cell {:10.2f}{:10.2f}{:10.2f}{:10.2f}{:10.2f}{:10.2f} - Vol {:10.2f}\n".format(crystal["spgr"], *crystal["cell"], crystal["volume"])
+            s_list.append(s)
+        return s_list
 
     def integration_info(self, sequence=0, outer_shell=True, filename=False):
         d = self.d
@@ -172,30 +116,9 @@ class dials_parser(object):
 
         return s
 
-    @property
-    def volume(self):
-        return self.d["volume"]
-
-    @property
-    def unit_cell(self):
-        return self.d["cell"]
-
-    @property
-    def space_group(self):
-        return self.d["spgr"]
-
-    def cell_as_dict(self):
-        d = dict(zip("a b c al be ga".split(), self.unit_cell))
-        d["volume"] = self.volume
-        d["spgr"] = self.space_group
-        d["rotation_angle"] = self.d["rot_range"]
-        d["total_completeness"] = self.d["total"]["completeness"]
-        d["file"] = self.d["fn"]
-        return d
-
 
 def cells_to_excel(ps, fn="cells.xlsx"):
-    """Takes a list of `DIALS_parser` instances and writes the cell
+    """Takes a list of `dials_parser` instances and writes the cell
     parameters to an excel file `cells.xlsx`.
     """
     d = {}
@@ -217,7 +140,7 @@ def cells_to_excel(ps, fn="cells.xlsx"):
 
 
 def cells_to_cellparm(ps):
-    """Takes a list of `DIALS_parser` instances and writes the cell
+    """Takes a list of `dials_parser` instances and writes the cell
     parameters to an instruction file `CELLPARM.INP` for the program
     `cellparm`.
     """
@@ -256,8 +179,8 @@ def cells_to_yaml(ps, fn="cells.yaml"):
 
 
 def gather_DIALS_refl(ps, min_completeness=10.0, min_cchalf=90.0, gather=False):
-    """Takes a list of `DIALS_parser` instances and gathers the
-    corresponding `DIALS_ASCII.HKL` files into the current directory.
+    """Takes a list of `dials_parser` instances and gathers the
+    corresponding relf files into the current directory.
     The data source and numbering scheme is summarized in the file `filelist.txt`.
     """
     fn = "filelist.txt"
@@ -343,7 +266,7 @@ def cells_to_yaml_xparm(uc, fn="cells_xparm.yaml"):
 
         d["directory"] = str(Path(p[1]).parent.resolve())
 
-        """get rotation range from DIALS.INP"""
+        """get rotation range from dials.import.log"""
         DIALSinp = Path(p[1]).parent / "DIALS.INP"
         with open(DIALSinp, "r") as f:
             for line in f:
@@ -386,61 +309,34 @@ def main():
                         action="store_true", dest="gather",
                         help="Gather refl files in local directory.")
 
-    parser.add_argument("-x", "--xparm",
-                        action="store_true", dest="xparm",
-                        help="extract unit cell info from XPARM.DIALS instead of CORRECT.LP. NOTE!! Only aimed for first step clustering.")
+    parser.add_argument("-j", "--job",
+                        action="store", type=str, dest="job",
+                        help="Type of ")
 
-    parser.set_defaults(match=None)
+    parser.set_defaults(match=None, gather=False, job='index')
 
     options = parser.parse_args()
 
     match = options.match
     gather = options.gather
-    xparm = options.xparm
     args = options.args
+    job = options.job
 
-    if xparm:
-        fns = parse_args_for_fns(args, name="XPARM.DIALS", match=match)
-        foundCells_and_Path = []
-
-        for fn in fns:
-            uc = parse_xparm_for_uc(fn)
-            foundCells_and_Path.append([uc, fn])
-
-        cells_to_yaml_xparm(uc = foundCells_and_Path, fn = "cells_xparm.yaml")
-        print("Cell information from XPARM.DIALS parsed to cells_xparm.yaml")
-
-    else:
-        fns = parse_args_for_fns(args, name="CORRECT.LP", match=match)
-
-        DIALSall = []
+    if job == 'index':
+        fns = parse_args_for_fns(args, name="dials.index.log", match=match)
+        dials_all = []
         for fn in fns:
             try:
-                p = DIALS_parser(fn)
+                p = dials_parser(fn, type='index')
             except UnboundLocalError as e:
                 print(e)
                 continue
             else:
                 if p and p.d:
-                    DIALSall.append(p)
-
-        for i, p in enumerate(DIALSall):
+                    dials_all.append(p)
+        for i, p in enumerate(dials_all):
             i += 1
             print(p.cell_info(sequence=i))
-
-        print(DIALS_parser.info_header())
-        for i, p in enumerate(DIALSall):
-            i += 1
-            print(p.integration_info(sequence=i, filename=True))
-
-        cells_to_excel(DIALSall)
-        # cells_to_cellparm(DIALSall)
-        cells_to_yaml(DIALSall)
-
-        gather_DIALS_ascii(DIALSall, gather=gather)
-
-        evaluate_symmetry(DIALSall)
-        print("\n ** the score corresponds to the total number of indexed reflections.")
 
 
 if __name__ == '__main__':

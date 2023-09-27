@@ -45,90 +45,38 @@ def connect(payload: str) -> None:
             print(data)
 
 
-def parse_dials(path: str, sequence: int=0) -> None:
-    """Parse XDS output (CORRECT.LP) and print summary about indexing progress
+def parse_dials_index(path: str, sequence: int=0) -> None:
+    """Parse DIALS index output and print summary about indexing progress
     to the screen.
     
     Parameters
     ----------
     path : str
-        Path in which XDS has been run
+        Path in which dials.index has been run
     sequence : int
         Sequence number, needed for output and house-keeping
     """
     drc = Path(path)
-    correct_lp = drc / "CORRECT.LP"
-
-    lookBack = 160
+    dials_index_log = drc / "dials.index.log"
     msg = None
 
     # rlock prevents messages getting mangled with 
     # simultaneous print statements from different threads
     with rlock:
-        if correct_lp.exists():
-        # if all files exist, try parsing CORRECT.LP
+        if dials_index_log.exists():
             try:
-                p = dials_parser(correct_lp)
+                p = dials_parser(dials_index_log, type='index')
             except UnboundLocalError:
                 msg = f"{sequence: 4d}: {drc} -> Indexing completed but no cell reported..."
             else:
                 msg = "\n"
-                msg += p.cell_info(sequence=sequence)
+                msg += "\n".join(p.cell_info(sequence=sequence))
                 msg += "\n"
-                msg += p.info_header(hline=False)
-                msg += p.integration_info(sequence=sequence)
-
             print(msg)
-        else:
-            for i, job in enumerate(XDSJOBS):
-                error = None
-                fn = (drc / job).with_suffix(".LP")
-                if fn.exists():
-                    with open(fn, "rb") as f:
-                        f.seek(-lookBack, 2)
-                        lines = f.readlines()
 
-                    for line in lines:
-                        if b"ERROR" in line:
-                            error = line.decode()
-                            error = error.split("!!!")[-1].strip()
-
-                    if error:
-                        msg = f"{sequence: 4d}: {drc} -> Error in {job}: {error}"
-                        print(msg)
-                        return
         with open(drc.parent.parent / "index_results.log", "a") as f:
             if msg is not None:
                 print(msg, file=f)
-
-
-
-def dials_process(path: str, sequence: int=0) -> None:
-    """Run dials_process.bat at given path.
-    
-    Parameters
-    ----------
-    path : str
-        Run dials_process.bat in this directory, expects dials_process.bat in this directory
-    sequence : int
-        Sequence number, needed for output and house-keeping
-    """
-
-    cmd = "dials_process.bat"
-
-    cwd = str(path)
-
-    try:
-        p = sp.Popen(cmd, cwd=cwd, stdout=DEVNULL)
-        p.wait()
-    except Exception as e:
-        print("ERROR in subprocess call:", e)
-
-    try:
-        parse_dials(path, sequence=sequence)
-    except Exception:
-        traceback.print_exc()
-
 
 
 def main():
@@ -156,14 +104,14 @@ def main():
                         action="store_true", dest="unprocessed_only",
                         help="Run dials_process.bat only in unprocessed directories ")
 
-    parser.add_argument("-j", "--jobs",
-                        action="store", type=int, dest="n_jobs",
-                        help="Number of jobs to run in parallel")
+    parser.add_argument("-j", "--job",
+                        action="store", type=str, dest="job",
+                        help="Type of ")
 
     parser.set_defaults(use_server=False,
                         match=None,
                         unprocessed_only=False,
-                        n_jobs=1,
+                        job='index',
                         )
     
     options = parser.parse_args()
@@ -171,7 +119,7 @@ def main():
     use_server = options.use_server
     match = options.match
     unprocessed_only = options.unprocessed_only
-    n_jobs = options.n_jobs
+    job = options.job
     args = options.args
 
     fns = parse_args_for_fns(args, name="dials_process.bat", match=match)
@@ -180,6 +128,8 @@ def main():
         fns = [fn for fn in fns if not fn.with_name("dials.index.log").exists()]
         print(f"Filtered directories which have already been processed, {len(fns)} left")
 
+    if len(fns) == 0:
+        return -1
 
     drc = fns[0].parent
     with open(drc.parent.parent / "index_results.log", "w") as f:
@@ -191,9 +141,19 @@ def main():
         if use_server:
             connect(drc)
         else:
-            dials_process(drc, i)
-        futures.append(f)
-
+            cwd = str(drc)
+            cmd = str(drc/"dials_process.bat")
+            print(cwd)
+            try:
+                p = sp.Popen(cmd, cwd=cwd, stdout=DEVNULL)
+                p.wait()
+            except Exception as e:
+                print("ERROR in subprocess call:", e)
+            try:
+                if job == 'index':
+                    parse_dials_index(drc, sequence=i)
+            except Exception:
+                traceback.print_exc()
 
 if __name__ == '__main__':
     main()

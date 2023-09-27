@@ -56,7 +56,9 @@ setup(
             'edtools.find_beam_center  = edtools.find_beam_center:main',
             'edtools.scattering_factor  = edtools.scattering_factor:main',
             'edtools.update_dials  = edtools.update_dials:main',
-            'edtools.cif_tools = edtools.cif_tools:main']},
+            'edtools.cif_tools = edtools.cif_tools:main',
+            'edtools.autoindex_dials  = edtools.autoindex_dials:main',
+            'edtools.extract_dials_info  = edtools.extract_dials_info:main',]},
     packages=['edtools'],
     package_dir={
         'edtools': 'edtools'},

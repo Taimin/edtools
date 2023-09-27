@@ -143,7 +143,6 @@ def main():
         else:
             cwd = str(drc)
             cmd = str(drc/"dials_process.bat")
-            print(cwd)
             try:
                 p = sp.Popen(cmd, cwd=cwd, stdout=DEVNULL)
                 p.wait()

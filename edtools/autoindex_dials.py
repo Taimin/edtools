@@ -70,7 +70,7 @@ def parse_dials_index(path: str, sequence: int=0) -> None:
                 msg = f"{sequence: 4d}: {drc} -> Indexing completed but no cell reported..."
             else:
                 msg = "\n"
-                msg += "\n".join(p.cell_info(sequence=sequence))
+                msg += "".join(p.cell_info(sequence=sequence))
                 msg += "\n"
             print(msg)
 

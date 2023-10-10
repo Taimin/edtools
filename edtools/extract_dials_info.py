@@ -5,6 +5,7 @@ import shutil
 import re
 from .utils import volume, parse_args_for_fns
 from .utils import space_group_lib
+import copy
 
 spglib = space_group_lib()
 
@@ -56,14 +57,14 @@ class dials_parser:
                     spgr = ''.join(line.strip("\n").split()[2:])
                 elif line.startswith("|   Imageset"):
                     infos = [info.strip() for info in crystal[index+2].split('|')]
-                    d['indexed'] = int(infos[1])
-                    d['unindexed'] = int(infos[2])
+                    d['indexed'] = int(infos[2])
+                    d['unindexed'] = int(infos[3])
             d["volume"] = volume(cell)
             d["cell"] = cell
             d["spgr"] = spgr
             d["model_num"] = model_num
             d["fn"] = fn
-            d_list.append(d)
+            d_list.append(copy.deepcopy(d))
         
         return d_list
 
@@ -85,7 +86,8 @@ class dials_parser:
             fn = self.filename
             model_num = crystal["model_num"]
             s = f"{i: 4d}: {fn.parents[0]} # {model_num} # {time.ctime(os.path.getmtime(fn))}\n"
-            s += "Spgr {} - Cell {:10.2f}{:10.2f}{:10.2f}{:10.2f}{:10.2f}{:10.2f} - Vol {:10.2f}\n".format(crystal["spgr"], *crystal["cell"], crystal["volume"])
+            s += "Spgr {} - Cell {:10.2f}{:10.2f}{:10.2f}{:10.2f}{:10.2f}{:10.2f} - Vol {:10.2f} Indexed: {} Unindexed: {}\n"\
+                    .format(crystal["spgr"], *crystal["cell"], crystal["volume"], crystal["indexed"], crystal["unindexed"])
             s_list.append(s)
         return s_list
 

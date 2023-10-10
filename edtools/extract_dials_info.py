@@ -1,6 +1,6 @@
 from pathlib import Path
 import os
-import time
+from datetime import datetime
 import shutil
 import re
 from .utils import volume, parse_args_for_fns
@@ -68,13 +68,6 @@ class dials_parser:
         
         return d_list
 
-    @staticmethod
-    def info_header(hline=True):
-        s  = "   #   dmax  dmin    ntot   nuniq   compl   i/sig   rmeas CC(1/2)     ISa   B(ov)\n"
-        if hline:
-            s += "---------------------------------------------------------------------------------\n"
-        return s
-
     def print_filename(self):
         print("#", self.filename)
 
@@ -85,9 +78,10 @@ class dials_parser:
         for crystal in d:
             fn = self.filename
             model_num = crystal["model_num"]
-            s = f"{i: 4d}: {fn.parents[0]} # {model_num} # {time.ctime(os.path.getmtime(fn))}\n"
+            s = f"{i: 4d}: {fn.parents[0]} # Time: {datetime.fromtimestamp((os.path.getmtime(fn))).strftime('%Y-%m-%d %H:%M:%S')} #\n"
             s += "Spgr {} - Cell {:10.2f}{:10.2f}{:10.2f}{:10.2f}{:10.2f}{:10.2f} - Vol {:10.2f} Indexed: {} Unindexed: {}\n"\
                     .format(crystal["spgr"], *crystal["cell"], crystal["volume"], crystal["indexed"], crystal["unindexed"])
+            s += f"# Model {model_num} # Indexed: {crystal['indexed']} # Unindexed: {crystal['unindexed']} # Percentage: {crystal['indexed']/(crystal['indexed']+crystal['unindexed']:.1%)} #\n"
             s_list.append(s)
         return s_list
 

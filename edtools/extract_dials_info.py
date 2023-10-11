@@ -6,19 +6,20 @@ import re
 from .utils import volume, parse_args_for_fns
 from .utils import space_group_lib
 import copy
+import pandas as pd
 
 spglib = space_group_lib()
-
+CWD = Path(os.getcwd())
 
 class dials_parser:
     """docstring for dials_parser"""
-    def __init__(self, filename, type='index'):
+    def __init__(self, filename, job='index'):
         self.ios_threshold = 0.8
 
         self.filename = Path(filename).resolve()
-        self.d = self.parse(type)
+        self.d = self.parse(job)
 
-    def parse(self, type):
+    def parse(self, job):
         fn = self.filename
         with open(fn, "r") as f:
             lines = f.readlines()
@@ -63,7 +64,7 @@ class dials_parser:
             d["cell"] = cell
             d["spgr"] = spgr
             d["model_num"] = model_num
-            d["fn"] = fn
+            d["fn"] = str(fn)
             d_list.append(copy.deepcopy(d))
         
         return d_list
@@ -81,7 +82,8 @@ class dials_parser:
             s = f"{i: 4d}: {fn.parents[0]} # Time: {datetime.fromtimestamp((os.path.getmtime(fn))).strftime('%Y-%m-%d %H:%M:%S')} #\n"
             s += "Spgr {} - Cell {:10.2f}{:10.2f}{:10.2f}{:10.2f}{:10.2f}{:10.2f} - Vol {:10.2f} Indexed: {} Unindexed: {}\n"\
                     .format(crystal["spgr"], *crystal["cell"], crystal["volume"], crystal["indexed"], crystal["unindexed"])
-            s += f"# Model {model_num} # Indexed: {crystal['indexed']} # Unindexed: {crystal['unindexed']} # Percentage: {crystal['indexed']/(crystal['indexed']+crystal['unindexed']:.1%)} #\n"
+            s += f"# Model {model_num} # Indexed: {crystal['indexed']} # Unindexed: {crystal['unindexed']} \
+                    # Percentage: {crystal['indexed']/(crystal['indexed']+crystal['unindexed']):.1%} #\n"
             s_list.append(s)
         return s_list
 
@@ -321,19 +323,25 @@ def main():
     if job == 'index':
         fns = parse_args_for_fns(args, name="dials.index.log", match=match)
         dials_all = []
+        records = []
         for fn in fns:
             try:
-                p = dials_parser(fn, type='index')
+                p = dials_parser(fn, job=job)
             except UnboundLocalError as e:
                 print(e)
                 continue
             else:
                 if p and p.d:
                     dials_all.append(p)
+                    for crystal in p.d:
+                        records.append(crystal)
+
         for i, p in enumerate(dials_all):
             i += 1
             print(p.cell_info(sequence=i))
 
+        df = pd.DataFrame.fromdict(records)
+        df.to_csv(CWD/'unit_cell.csv')
 
 if __name__ == '__main__':
     main()

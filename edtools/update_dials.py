@@ -14,6 +14,7 @@ from instamatic.processing.ImgConversion import rotation_axis_to_xyz
 from instamatic.tools import find_beam_center, find_subranges
 
 from .utils import parse_args_for_fns
+import traceback
 
 
 def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, osc_angle, name, axis,
@@ -32,22 +33,30 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
         img, _ = read_image(img_name)
         img_list.append((img_name.name.split('.')[0], img))
 
+    center_x_first = None
+    
+
     # TODO: The interpolation will blur out the diffraction pattern or make some artifacts...
     # Consider change to fourier shift
     for i, (img_name, img) in enumerate(img_list, 1): 
-        if center:
+        try:
             if i == 1:
                 center_x, center_y = find_beam_center(img)
-                template = img[int(round(center_x-16)):int(round(center_x+16)), 
-                        int(round(center_y-16)):int(round(center_y+16))].copy()
-                center_x_first, center_y_first = find_beam_center(template, sigma=5)
-            else:
-                center_pos  = find_beam_center(img[int(round(center_x-16)):int(round(center_x+16)), 
-                                            int(round(center_y-16)):int(round(center_y+16))], sigma=5)
-                shift = (center_x_first-center_pos[0], center_y_first-center_pos[1])
-                #shift, error, phasediff = phase_cross_correlation(template, center_area, upsample_factor=10)
-                print(shift)
-                img = ndimage.shift(img, shift, order=1, output=np.uint16, mode='nearest')
+            if center:
+                if i == 1 or center_x_first is None:
+                    center_x, center_y = find_beam_center(img)
+                    template = img[int(round(center_x-16)):int(round(center_x+16)), 
+                            int(round(center_y-16)):int(round(center_y+16))].copy()
+                    center_x_first, center_y_first = find_beam_center(template, sigma=5)
+                else:
+                    center_pos  = find_beam_center(img[int(round(center_x-16)):int(round(center_x+16)), 
+                                                int(round(center_y-16)):int(round(center_y+16))], sigma=5)
+                    shift = (center_x_first-center_pos[0], center_y_first-center_pos[1])
+                    #shift, error, phasediff = phase_cross_correlation(template, center_area, upsample_factor=10)
+                    print(shift)
+                    img = ndimage.shift(img, shift, order=1, output=np.uint16, mode='nearest')
+        except:
+            continue
 
         if stretch:
             if stretch_cent_x is None or stretch_cent_y is None:
@@ -89,7 +98,11 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
         header['DENZO_Y_BEAM'] = f'{center_y*physical_pixelsize:.4f}'
         write_adsc(smv_folder/'data'/(img_name+'.img'), img, header)
 
-    scanranges = [int(num) for num in list(zip(*img_list))[0]]
+    img_name_list = smv_folder.rglob('*.img')
+    img_list = []
+    for img_name in img_name_list:
+        img_list.append((img_name.name.split('.')[0]))
+    scanranges = [int(num) for num in img_list]
     observed_range = set(scanranges)
     complete_range = set(range(min(observed_range), max(observed_range) + 1))
     missing_range = observed_range ^ complete_range

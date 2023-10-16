@@ -18,7 +18,7 @@ except ImportError:
     HOST, PORT = None, None
 
 DEVNULL = open(os.devnull, 'w')
-
+CWD = Path(os.getcwd())
 rlock = threading.RLock()
 
 def connect(payload: str) -> None:
@@ -74,7 +74,7 @@ def parse_dials_index(path: str, sequence: int=0) -> None:
                 msg += "\n"
             print(msg)
 
-        with open(drc.parent.parent / "index_results.log", "a") as f:
+        with open(CWD / "index_results.log", "a") as f:
             if msg is not None:
                 print(msg, file=f)
 
@@ -131,8 +131,7 @@ def main():
     if len(fns) == 0:
         return -1
 
-    drc = fns[0].parent
-    with open(drc.parent.parent / "index_results.log", "w") as f:
+    with open(CWD / "index_results.log", "w") as f:
         pass
 
     for i, fn in enumerate(fns):

@@ -181,9 +181,17 @@ def main():
                         action="store", type=bool, dest="export",
                         help="Export the data")
 
+    parser.add_argument("-sk", "--skip",
+                        action="store", type=int, dest="skip",
+                        help="skip n frames")
+
+    parser.add_argument("-inc", "--include_frames",
+                        action="store", type=int, nargs=2, dest="include_frames",
+                        help="Specify frame number to include frames to process")
+
     parser.set_defaults(integrate=False, center=False, stretch=False, refine=False,
                         symmetry=False, scale=False, merge=False, report=False, export=False,
-                        name='Medipix3')
+                        name='Medipix3', skip=None, include_frames=None)
 
     options = parser.parse_args()
     fns = options.args
@@ -198,6 +206,8 @@ def main():
     export = options.export
     name = options.name
     match = options.match
+    skip = options.skip
+    include_frames = options.include_frames
 
     fns = parse_args_for_fns(fns, name="summary.txt", match=match)
 

@@ -54,11 +54,15 @@ def main():
         center_list = []
         imgs = []
         header = {}
-        for img_file in img_list:
+        frame_list = []
+        event_list = []
+        for index, img_file in enumerate(img_list):
             img, h = read_image(img_file)
             imgs.append(img)
             center = [h['BEAM_CENTER_Y'], h['BEAM_CENTER_X']]
             center_list.append(center)
+            frame_list.append(index)
+            event_list.append(f'entry//{index}')
 
         imgs = np.array(imgs)
         center_X, center_Y = list(zip(center))
@@ -67,8 +71,11 @@ def main():
         h5_filename = '_'.join(os.path.relpath(img_file.parent, CWD).split(os.sep))
         h5_filename = h5_filename + '.h5'
         with h5py.File(CWD/'h5'/h5_filename, 'w') as f:
-            h5data = f.create_dataset('/entry/data', data=imgs)
+            h5data = f.create_dataset('/entry/data/raw_counts', data=imgs)
             h5data.attrs.update(header)
+            h5shots = f.create_group('/entry/shots')
+            h5shots.attrs['Event'] = np.array(event_list)
+            h5shots.attrs['frame'] = np.array(frame_list)
 
         # generate a .lst file in the directory, append relative path 
         with open(CWD / "files.lst", "a") as f:

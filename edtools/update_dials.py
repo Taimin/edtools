@@ -196,7 +196,7 @@ def main():
 
     parser.set_defaults(integrate=False, center=False, stretch=False, refine=False,
                         symmetry=False, scale=False, merge=False, report=False, export=False,
-                        name='Medipix3')
+                        name='ADSC')
 
     options = parser.parse_args()
     fns = options.args

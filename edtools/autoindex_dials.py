@@ -65,7 +65,7 @@ def parse_dials_index(path: str, sequence: int=0) -> None:
     with rlock:
         if dials_index_log.exists():
             try:
-                p = dials_parser(dials_index_log, type='index')
+                p = dials_parser(dials_index_log, job='index')
             except UnboundLocalError:
                 msg = f"{sequence: 4d}: {drc} -> Indexing completed but no cell reported..."
             else:

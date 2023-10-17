@@ -340,7 +340,7 @@ def main():
             i += 1
             print(p.cell_info(sequence=i))
 
-        df = pd.DataFrame.fromdict(records)
+        df = pd.DataFrame.from_dict(records)
         df.to_csv(CWD/'unit_cell.csv')
 
 if __name__ == '__main__':

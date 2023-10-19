@@ -58,7 +58,8 @@ setup(
             'edtools.update_dials  = edtools.update_dials:main',
             'edtools.cif_tools = edtools.cif_tools:main',
             'edtools.autoindex_dials  = edtools.autoindex_dials:main',
-            'edtools.extract_dials_info  = edtools.extract_dials_info:main',]},
+            'edtools.extract_dials_info  = edtools.extract_dials_info:main',
+            'edtools.dials_to_crystfel  = edtools.dials_to_crystfel:main',]},
     packages=['edtools'],
     package_dir={
         'edtools': 'edtools'},

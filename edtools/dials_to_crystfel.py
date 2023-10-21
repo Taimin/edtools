@@ -93,6 +93,7 @@ def main():
         imgs = []
         frame_list = []
         event_list = []
+        
         for index, img_file in enumerate(img_list):
             img, h = read_image(img_file)
             imgs.append(img)
@@ -100,7 +101,11 @@ def main():
             center_list.append(center)
             frame_list.append(index)
             event_list.append(f'entry//{index}')
-
+            
+        h5_filename = '_'.join(os.path.relpath(img_file.parent, CWD).split(os.sep))
+        h5_filename = h5_filename + '.h5'
+        file_list = ['./h5/'+h5_filename] * len(img_list)
+        file_list = [s.encode('utf-8') for s in file_list]
         imgs = np.array(imgs)
         event_list = [s.encode('utf-8') for s in event_list]
         center_X_mm, center_Y_mm = zip(*center_list)
@@ -108,20 +113,20 @@ def main():
         center_Y_mm = np.array(list(center_Y_mm))
         center_X = center_X_mm / float(h['PIXEL_SIZE'])
         center_Y = center_Y_mm / float(h['PIXEL_SIZE'])
-        h5_filename = '_'.join(os.path.relpath(img_file.parent, CWD).split(os.sep))
-        h5_filename = h5_filename + '.h5'
+        
         with h5py.File(CWD/'h5'/h5_filename, 'w') as f:
             dt = h5py.special_dtype(vlen=bytes)
             f.create_dataset('/entry/data/raw_counts', data=imgs)
             f.create_dataset('/entry/data/index', data=frame_list)
-            f.create_dataset('/entry/shots/det_shift_x_mm', data=center_X_mm)
-            f.create_dataset('/entry/shots/det_shift_y_mm', data=center_Y_mm)
-            f.create_dataset('/entry/shots/center_x', data=center_X)
-            f.create_dataset('/entry/shots/center_y', data=center_Y)
-            f.create_dataset('/entry/shots/com_x', data=center_X)
-            f.create_dataset('/entry/shots/com_y', data=center_Y)
+            f.create_dataset('/entry/shots/det_shift_x_mm', data=center_X_mm, dtype=np.float32)
+            f.create_dataset('/entry/shots/det_shift_y_mm', data=center_Y_mm, dtype=np.float32)
+            f.create_dataset('/entry/shots/center_x', data=center_X, dtype=np.float32)
+            f.create_dataset('/entry/shots/center_y', data=center_Y, dtype=np.float32)
+            f.create_dataset('/entry/shots/com_x', data=center_X, dtype=np.float32)
+            f.create_dataset('/entry/shots/com_y', data=center_Y, dtype=np.float32)
             f.create_dataset('/entry/shots/Event', data=event_list, dtype=dt)
             f.create_dataset('/entry/shots/frame', data=frame_list)
+            f.create_dataset('/entry/shots/file', data=file_list, dtype=dt)
 
         # generate a .lst file in the directory, append relative path 
         with open(CWD / "files.lst", "a") as f:
@@ -133,19 +138,24 @@ def main():
             d = json.load(f)
             crystals = d['crystal']
 
+        with open(CWD / "indexed.sol", "w") as f:
+            pass
+
         with open(CWD / "indexed.sol", "a") as f:
+            h5_filename = h5_filename.split('.')[0] + '_hit.h5'
             for index, crystal in enumerate(crystals):
                 real_sp_matrix = np.array([crystal['real_space_a'], crystal['real_space_b'], crystal['real_space_c']])
                 real_sp_matrix = real_sp_matrix / 10
                 reciprocal_sp_matrix = np.linalg.inv(real_sp_matrix).T
+                reciprocal_sp_matrix[:, 0] = -reciprocal_sp_matrix[:, 0]
                 reciprocal_sp_matrix = reciprocal_sp_matrix.flatten().tolist()
-                reciprocal_sp_matrix = [str(num) for num in reciprocal_sp_matrix]
+                reciprocal_sp_matrix = [f'{num:.7f}' for num in reciprocal_sp_matrix]
                 sp = crystal['space_group_hall_symbol'].replace(' ', '')
                 for num, tmp in spglib.items():
                     if tmp['name'] == sp:
                         sp_num = num
                 lattice = spglib[sp_num]['lattice']
                 sym = lattice_type_sym(lattice)
-                print(f"h5/{h5_filename} entry//{index} {' '.join(reciprocal_sp_matrix)} 0 0 {sym}", file=f)
+                print(f"./h5/{h5_filename} entry//{index} {' '.join(reciprocal_sp_matrix)} 0 0 {sym}", file=f)
 
     print(f"\033[KUpdated {len(fns)} files")

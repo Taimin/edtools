@@ -1,15 +1,20 @@
-from diffractem import version, proc2d, pre_proc_opts, io
-from diffractem.dataset import Dataset
-
-import numpy as np
-from dask.distributed import Client, LocalCluster, TimeoutError
 import os
 import subprocess
 import io
-from scipy.optimize import least_squares, minimize
+import numpy as np
 from numpy import fft
+import dask
 import dask as da
+from dask.distributed import Client, LocalCluster, TimeoutError
+from scipy.optimize import least_squares, minimize
+import pandas as pd
+import matplotlib
+from glob import glob
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
+from diffractem import version, proc2d, pre_proc_opts, io, tools, proc_peaks
+from diffractem.dataset import Dataset
+from diffractem.stream_parser import StreamParser, augment_stream, make_substream
 
 def main():
     import argparse
@@ -31,11 +36,11 @@ def main():
                         action="store_true", dest="compute",
                         help="Compute and fit the center beam using Lorentz function.")
 
-    parser.add_argument("-ref", "--refine_geometry",
+    parser.add_argument("-ref_g", "--refine_geometry",
                         action="store_true", dest="refine_geometry",
                         help="Refine experimental data collection geometry.")
 
-    parser.add_argument("-ref", "--refine_cell",
+    parser.add_argument("-ref_c", "--refine_cell",
                         action="store_true", dest="refine_cell",
                         help="Refine unit cell using powder pattern.")
 
@@ -51,8 +56,8 @@ def main():
                         action="store_true", dest="merge_hkl",
                         help="Merge hkls from each frame to one file (crystfel format).")
 
-    parser.add_argument("-h", "--hit_rule",
-                        action="store", type=str, nargs=3, dest="hit_rule",
+    parser.add_argument("-hit", "--hit_rule",
+                        action="store", type=float, nargs=3, dest="hit_rule",
                         help="Rules to judge whether a crystal is hitted by the beam or not, format: #peaks #peaks_lorentz resolution.")
 
     parser.add_argument("-ind", "--index",
@@ -63,7 +68,7 @@ def main():
                         action="store_true", dest="integrate",
                         help="Rules to judge whether a crystal is hitted by the beam or not, format: #peaks #peaks_lorentz resolution.")
 
-    parser.set_defaults(read=True, compute=True, refine_geometry=True, plot=False, merge_hkl=True, index=True, integrate=True)
+    parser.set_defaults(read=True, compute=True, hit_rule=[15, 10, 0.8], refine_geometry=False, plot=False, merge_hkl=False, index=False, integrate=False)
 
     options = parser.parse_args()
     fns = options.args

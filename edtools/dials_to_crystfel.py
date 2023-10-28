@@ -97,9 +97,6 @@ def main():
                 except Exception as e:
                     print("ERROR in subprocess call:", e)
 
-            if not (drc / 'stills.expt').is_file() and not (drc / 'stills.refl').is_file():
-                print(f'stills.expt or stills.refl file does not exist for crystal number {index}.')
-                continue
             with open(drc / 'stills.expt', 'r') as f:
                 d = json.load(f)
                 crystals = d['crystal']

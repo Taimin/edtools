@@ -1,5 +1,6 @@
 import threading
 import socket
+import shutil
 import sys, os
 import traceback
 from pathlib import Path
@@ -116,8 +117,9 @@ def main():
                         match=None,
                         unprocessed_only=False,
                         job='index',
+                        restrain=True,
                         )
-    
+
     options = parser.parse_args()
 
     use_server = options.use_server
@@ -125,7 +127,7 @@ def main():
     unprocessed_only = options.unprocessed_only
     job = options.job
     args = options.args
-    restrain = options.args
+    restrain = options.restrain
 
     fns = parse_args_for_fns(args, name="dials_process.bat", match=match)
 
@@ -150,7 +152,8 @@ def main():
                 shutil.copy(str(CWD/'restrain.phil'), str(drc/'restrain.phil'))
             else:
                 with open(drc/'restrain.phil', 'w') as f:
-                    pass
+                    print('indexing {', file=f)
+                    print('}', file=f)
             cmd = str(drc/"dials_process.bat")
             try:
                 p = sp.Popen(cmd, cwd=cwd, stdout=DEVNULL)

@@ -118,7 +118,7 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
         print(f'set rotation_axis=geometry.goniometer.axes={rot_x:.4f},{rot_y:.4f},{rot_z:.4f}', file=f)
         print(f'call dials.import template=./data/#####.img %rotation_axis%', file=f)
         print(f'call dials.find_spots imported.expt %scan_range%', file=f)
-        print(f'call dials.index imported.expt strong.refl max_lattices=3 refinement_protocol.n_macro_cycles=1', file=f)
+        print(f'call dials.index imported.expt strong.refl max_lattices=3 refinement_protocol.n_macro_cycles=1 restrain.phil', file=f)
         if refine:
             print(f'call dials.refine_bravais_settings indexed.expt indexed.refl', file=f)
             print(f'call dials.refine indexed.expt indexed.refl', file=f)

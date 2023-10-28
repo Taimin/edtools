@@ -9,6 +9,7 @@ from dask.distributed import Client, LocalCluster, TimeoutError
 from scipy.optimize import least_squares, minimize
 import pandas as pd
 import matplotlib
+import matplotlib.pyplot as plt
 from glob import glob
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
@@ -68,7 +69,8 @@ def main():
                         action="store_true", dest="integrate",
                         help="Rules to judge whether a crystal is hitted by the beam or not, format: #peaks #peaks_lorentz resolution.")
 
-    parser.set_defaults(read=True, compute=True, hit_rule=[15, 10, 0.8], refine_geometry=False, plot=False, merge_hkl=False, index=False, integrate=False)
+    parser.set_defaults(read=False, compute=False, hit_rule=[15, 10, 0.8], refine_geometry=False, refine_cell=False, 
+                        plot=False, merge_hkl=False, index=False, integrate=True)
 
     options = parser.parse_args()
     fns = options.args
@@ -121,7 +123,7 @@ def main():
         pkd = da.compute({k: v for k, v in ds.stacks.items() if 'peak' in k.lower()})[0] # for convenience
         # ellipticity checker
         # radial range to show (in pixels)
-        rad_range = (10, 80)
+        rad_range = (20, 200)
         peakdata = proc_peaks.get_pk_data(pkd['nPeaks'], pkd['peakXPosRaw'], pkd['peakYPosRaw'], 
                                           ds.shots.center_x.values, 
                                           ds.shots.center_y.values, 
@@ -276,15 +278,17 @@ def main():
         stream_fields = [f'/%/shots/{f}' for f in  stream_fields]
         # generate geometry file for virtual geometry from yaml file parameters.
         tools.make_geometry(opts, 'refined.geom', image_name='corrected', write_mask=False)
-        tools.call_indexamajig('hits_agg.lst', 'refined.geom', script='im_run_index.sh', 
+        cfcall = tools.call_indexamajig('hits_agg.lst', 'refined.geom', script='im_run_index.sh', 
                            output='master.stream',  cell='refined.cell', im_params=opts.indexing_params, 
                            copy_fields=stream_fields, procs=8)
+        print('----------Indexing----------')
+        print(cfcall)
+        print('----------Indexing----------')
 
     if integrate:
         # generate sol file
         dsname = 'hits_agg'
         ds = Dataset.from_files(dsname + '.lst', open_stacks=False)
-        ds.get_indexing_solution('master.stream', sol_file=dsname + '.sol')
         # Integration
         copy_fields = ['adf1', 'adf2', 'lor_hwhm', 'center_x', 'center_y']
         copy_fields = [f'/%/shots/{cf}' for cf in copy_fields]
@@ -293,8 +297,13 @@ def main():
                                         cell='refined.cell', script='im_run_integrate.sh', 
                                         im_params=opts.integration_params, 
                                         procs=8, exc='indexamajig',
-                                        fromfile_input_file = f'hits_agg.sol',
+                                        fromfile_input_file = f'indexed.sol',
                                         copy_fields=copy_fields)
+        print('----------Integrate----------')
+        with open('im_run_integrate.sh', 'r') as f:
+            print(f.read())
+        print('----------Integrate----------')
+
     if merge_hkl:
         # get a list of stream files
         stream_list = ['/cygdrive/i/SerialED/crystal_0000/streams/hits_agg.stream']
@@ -306,9 +315,12 @@ def main():
                     'push-res': 0.8,  'min-measurements': [3, ], 'model': ['unity', 'xsphere'],
                     'symmetry': 'mmm', 'stop-after': list(range(200, 1147, 200)) + [1147],
                     'no-logs': False, 'iterations': 3, 'j': 10}
-        tools.call_partialator(stream_list, popts, par_runs=4, 
+        cfcall = tools.call_partialator(stream_list, popts, par_runs=4, 
                                split=False, out_dir='merged',
                                slurm=False, cache_streams=False,) 
+        print('----------Merging----------')
+        print(cfcall)
+        print('----------Merging----------')
 
 
     cluster.close()

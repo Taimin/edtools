@@ -108,6 +108,10 @@ def main():
                         action="store", type=str, dest="job",
                         help="Type of ")
 
+    parser.add_argument("-r", "--restrain",
+                        action="store", type=bool, dest="restrain",
+                        help="If True, copy the restrain.phil file to each dials directory")
+
     parser.set_defaults(use_server=False,
                         match=None,
                         unprocessed_only=False,
@@ -121,6 +125,7 @@ def main():
     unprocessed_only = options.unprocessed_only
     job = options.job
     args = options.args
+    restrain = options.args
 
     fns = parse_args_for_fns(args, name="dials_process.bat", match=match)
 
@@ -141,6 +146,11 @@ def main():
             connect(drc)
         else:
             cwd = str(drc)
+            if restrain:
+                shutil.copy(str(CWD/'restrain.phil'), str(drc/'restrain.phil'))
+            else:
+                with open(drc/'restrain.phil', 'w') as f:
+                    pass
             cmd = str(drc/"dials_process.bat")
             try:
                 p = sp.Popen(cmd, cwd=cwd, stdout=DEVNULL)

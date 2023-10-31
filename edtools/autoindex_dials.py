@@ -117,7 +117,7 @@ def main():
                         match=None,
                         unprocessed_only=False,
                         job='index',
-                        restrain=True,
+                        restrain=False,
                         )
 
     options = parser.parse_args()

@@ -87,16 +87,20 @@ def main():
 
     opts = pre_proc_opts.PreProcOpts('preproc.yaml')
     opts.load()
-    cluster = LocalCluster(host=None, n_workers=8, threads_per_worker=2, local_directory='/scratch/distributed')
+    cluster = LocalCluster(host=None, n_workers=4)
     client = Client(address=cluster)
+    #client = Client()
 
     if read:
-        raw_files = io.expand_files('./h5/*.h5', validate=False)
+        raw_files = io.expand_files('./h5/*data.h5', validate=False)
         print(f'Found {len(raw_files)} raw files. Have fun pre-processing!')
         ds = Dataset.from_files(raw_files, chunking=50, )
 
     if compute:
-        ds.compute_pattern_info(opts='preproc.yaml', client=client, output_file='image_info.h5')
+        #ds.shots.loc[:, 'selected'] = False
+        #ds.shots.loc[1200:, 'selected'] = True
+        #ds = ds.get_selection()
+        ds.compute_pattern_info(opts='preproc.yaml', client=client, output_file='image_info.h5', calc_center=False)
         selection = f'num_peaks > {hit_rule[0]}'
         # this block is optional... a bit of manual mangling required
         lores_limit = hit_rule[2] # in Angstroms

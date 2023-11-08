@@ -60,7 +60,8 @@ setup(
             'edtools.autoindex_dials = edtools.autoindex_dials:main',
             'edtools.extract_dials_info = edtools.extract_dials_info:main',
             'edtools.dials_to_crystfel = edtools.dials_to_crystfel:main',
-            'edtools.autoprocess_crystfel = edtools.autoprocess_crystfel:main',]},
+            'edtools.autoprocess_crystfel = edtools.autoprocess_crystfel:main',
+            'edtools.reindex = edtools.reindex:main',]},
     packages=['edtools'],
     package_dir={
         'edtools': 'edtools'},

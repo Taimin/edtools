@@ -70,7 +70,7 @@ def main():
                         help="Rules to judge whether a crystal is hitted by the beam or not, format: #peaks #peaks_lorentz resolution.")
 
     parser.set_defaults(read=False, compute=False, hit_rule=[15, 10, 0.8], refine_geometry=False, refine_cell=False, 
-                        plot=False, merge_hkl=False, index=False, integrate=True)
+                        plot=False, merge_hkl=False, index=False, integrate=False)
 
     options = parser.parse_args()
     fns = options.args
@@ -168,9 +168,8 @@ def main():
                                           bins=[np.linspace(*rad_range, 200), np.linspace(-180, 180, 20)])
             return np.mean(powder_polar[0]**2)/np.mean(powder_polar[0] * np.roll(powder_polar[0], powder_polar[0].shape[1]//4, axis=1)) - 1
 
-        from concurrent.futures import ProcessPoolExecutor
         X, Y = np.meshgrid(ratio, angles)
-        with ProcessPoolExecutor() as exc:
+        with ThreadPoolExecutor() as exc:
             foms = exc.map(cost, zip(X.ravel(), Y.ravel()))
         foms = np.array(list(foms)).reshape(X.shape)
         if plot:
@@ -184,6 +183,7 @@ def main():
         tools.make_geometry(opts, 'refined.geom')
         ds.update_det_shift('preproc.yaml') # we have image_info.h5 open already... so not use tools
         ds.store_tables(shots=True)
+        tools.update_det_shift('hits_agg.lst', 'preproc.yaml')
 
         if plot:
             #virtual powder
@@ -310,7 +310,7 @@ def main():
 
     if merge_hkl:
         # get a list of stream files
-        stream_list = ['/cygdrive/i/SerialED/crystal_0000/streams/hits_agg.stream']
+        stream_list = ['/cygdrive/i/Box Sync/Serial3DED/Only_stage_tilt/large_cover/ZSM-5-exp3-20230917/hits_agg.stream']
         # reject stream files with "all" or "cum" in them, which contain many shots
         # per pattern.
         stream_list = [st for st in stream_list if not (('all' in st) or ('cum' in st))]

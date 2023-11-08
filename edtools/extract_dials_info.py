@@ -7,6 +7,7 @@ from .utils import volume, parse_args_for_fns
 from .utils import space_group_lib
 import copy
 import pandas as pd
+import numpy as np
 
 spglib = space_group_lib()
 CWD = Path(os.getcwd())
@@ -60,10 +61,23 @@ class dials_parser:
                     infos = [info.strip() for info in crystal[index+2].split('|')]
                     d['indexed'] = int(infos[2])
                     d['unindexed'] = int(infos[3])
+                elif line.startswith("    A = UB:"):
+                    A_matrix = []
+                    tmp = line.split('{')[-1].split(',')[:3]
+                    tmp[2] = tmp[2].split('}')[0]
+                    A_matrix.append([float(num) for num in tmp])
+                    tmp = crystal[index+1].strip().split('{')[-1].split(',')[:3]
+                    tmp[2] = tmp[2].split('}')[0]
+                    A_matrix.append([float(num) for num in tmp])
+                    tmp = crystal[index+2].strip().split('{')[-1].split(',')[:3]
+                    tmp[2] = tmp[2].split('}')[0]
+                    A_matrix.append([float(num) for num in tmp])
+                    A_matrix = np.array(A_matrix)
             d["volume"] = volume(cell)
             d["cell"] = cell
             d["spgr"] = spgr
             d["model_num"] = model_num
+            d['A_matrix'] = A_matrix
             d["fn"] = str(fn)
             d_list.append(copy.deepcopy(d))
         

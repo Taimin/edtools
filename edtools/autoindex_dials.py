@@ -4,6 +4,7 @@ import shutil
 import sys, os
 import traceback
 from pathlib import Path
+import concurrent.futures
 from .utils import parse_args_for_fns
 
 import subprocess as sp
@@ -79,6 +80,31 @@ def parse_dials_index(path: str, sequence: int=0) -> None:
             if msg is not None:
                 print(msg, file=f)
 
+def process_data(i, fn, job, restrain, use_server):
+    drc = fn.parent
+    if use_server:
+        connect(drc)
+    else:
+        cwd = str(drc)
+        shutil.copy(str(CWD/'dx.pickle'), str(drc/'dx.pickle'))
+        shutil.copy(str(CWD/'dy.pickle'), str(drc/'dy.pickle'))
+        if restrain:
+            shutil.copy(str(CWD/'restrain.phil'), str(drc/'restrain.phil'))
+        else:
+            with open(drc/'restrain.phil', 'w') as f:
+                print('indexing {', file=f)
+                print('}', file=f)
+        cmd = str(drc/"dials_process.bat")
+        try:
+            p = sp.Popen(cmd, cwd=cwd, stdout=DEVNULL)
+            p.communicate()
+        except Exception as e:
+            print("ERROR in subprocess call:", e)
+        try:
+            if job == 'index':
+                parse_dials_index(drc, sequence=i)
+        except Exception:
+            traceback.print_exc()
 
 def main():
     import argparse
@@ -138,33 +164,16 @@ def main():
     if len(fns) == 0:
         return -1
 
+    shutil.copy(str(CWD/'index_results.log'), str(CWD/'~index_results.log'))
     with open(CWD / "index_results.log", "w") as f:
         pass
 
-    for i, fn in enumerate(fns):
-        drc = fn.parent
-
-        if use_server:
-            connect(drc)
-        else:
-            cwd = str(drc)
-            if restrain:
-                shutil.copy(str(CWD/'restrain.phil'), str(drc/'restrain.phil'))
-            else:
-                with open(drc/'restrain.phil', 'w') as f:
-                    print('indexing {', file=f)
-                    print('}', file=f)
-            cmd = str(drc/"dials_process.bat")
-            try:
-                p = sp.Popen(cmd, cwd=cwd, stdout=DEVNULL)
-                p.wait()
-            except Exception as e:
-                print("ERROR in subprocess call:", e)
-            try:
-                if job == 'index':
-                    parse_dials_index(drc, sequence=i)
-            except Exception:
-                traceback.print_exc()
+    futures = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        for i, fn in enumerate(fns):
+            futures.append(executor.submit(process_data, i, fn, job, restrain, use_server))
+    concurrent.futures.wait(futures, return_when=concurrent.futures.ALL_COMPLETED)
+        
 
 if __name__ == '__main__':
     main()

@@ -42,7 +42,7 @@ def lattice_type_sym(lattice, unique_axis='c'):
         warn('Invalid lattice type {}'.format(lattice))
         return 'invalid'
 
-def process_data(index, fn, split, write_h5, lock, reindex=False, refine=False):
+def process_data(index, fn, split, write_h5, lock, reindex=False, refine=False, integrate=False):
     try:
         print(f'Start processing crystal number {index}.')
         drc = fn.parent/'SMV'
@@ -170,22 +170,22 @@ def process_data(index, fn, split, write_h5, lock, reindex=False, refine=False):
     except:
         traceback.print_exc()
 
-def run_parallel(fns, split, write_h5, lock, reindex=False, refine=False):
+def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refine=False, merge=False, integrate=False):
     futures = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         for index, fn in enumerate(fns):
-            futures.append(executor.submit(process_data, index, fn, split, write_h5, lock, reindex, refine))
+            futures.append(executor.submit(process_data, index, fn, split, write_h5, lock, reindex, refine, integrate))
     concurrent.futures.wait(futures, return_when=concurrent.futures.ALL_COMPLETED)
 
     if merge:
-        cmd = f'xia2.ssx_reduce.bat {files} d_min=0.6'
+        cmd = f'xia2.ssx_reduce.bat {files} d_min={d_min}'
         try:
             p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
             p.communicate()
         except Exception as e:
             print("ERROR in subprocess call:", e)
 
-        cmd = f'dials.export.bat DataFiles/scaled.expt DataFiles/scaled.refl format=shelx partiality_threshold=0.5'
+        cmd = f'dials.export.bat DataFiles/scaled.expt DataFiles/scaled.refl format=shelx partiality_threshold={thresh}'
         try:
             p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
             p.communicate()
@@ -236,7 +236,15 @@ def main():
                         action="store", type=bool, dest="refine",
                         help="Whether use DIALS to refine the indexed file before reindex")
 
-    parser.set_defaults(split=False, write_h5=False, reindex=False, refine=False)
+    parser.add_argument("-d", "--d_min",
+                        action="store", type=bool, dest="d_min",
+                        help="Minimum distance for ssx_reduce.")
+
+    parser.add_argument("-t", "--thresh",
+                        action="store", type=bool, dest="thresh",
+                        help="Partiality threshold for dials.export.")
+
+    parser.set_defaults(split=False, write_h5=False, reindex=False, refine=False, d_min=0.8, thresh=0.6)
 
     options = parser.parse_args()
     fns = options.args
@@ -246,6 +254,10 @@ def main():
     reindex = options.reindex
     input_file = options.input_file
     refine = options.refine
+    d_min = options.d_min
+    thresh = options.thresh
+    merge = options.merge
+    integrate = options.integrate
 
     if input_file:
         fns = []
@@ -270,5 +282,5 @@ def main():
     with open(CWD / "indexed.sol", "w") as f:
         pass
     lock = threading.Lock()
-    run_parallel(fns, split, write_h5, lock, reindex, refine)
+    run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex, refin, merge, integrate)
     print(f"\033[KUpdated {len(fns)} files")

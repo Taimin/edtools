@@ -74,8 +74,9 @@ def main():
         if reindex:
             fns_reindex = parse_args_for_fns(fns, name="dials.reindex.log", match=match)
 
-    with open(CWD / 'reindex.log', 'w') as f:
-        pass
+    if reindex:
+        with open(CWD / 'reindex.log', 'w') as f:
+            pass
     
     if reindex:
         with open(CWD / "reindex.log", "a") as fr:

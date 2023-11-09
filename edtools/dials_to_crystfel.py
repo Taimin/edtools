@@ -21,6 +21,7 @@ CWD = Path(os.getcwd())
 rlock = threading.RLock()
 spglib = space_group_lib()
 INPUT_FILE_EXIST = False
+FILES = {}
 
 def lattice_type_sym(lattice, unique_axis='c'):
     if lattice[0] == 'a':
@@ -41,7 +42,7 @@ def lattice_type_sym(lattice, unique_axis='c'):
         warn('Invalid lattice type {}'.format(lattice))
         return 'invalid'
 
-def process_data(index, fn, split, write_h5, lock, reindex=False):
+def process_data(index, fn, split, write_h5, lock, reindex=False, refine=False):
     try:
         print(f'Start processing crystal number {index}.')
         drc = fn.parent/'SMV'
@@ -49,9 +50,29 @@ def process_data(index, fn, split, write_h5, lock, reindex=False):
         if not (drc / 'indexed.expt').is_file() and not (drc / 'indexed.refl').is_file():
             print(f'indexed.expt or indexed.refl file does not exist for crystal number {index}.')
             return -1
+        if refine:
+            print(f'Start refine {fn}')
+            if reindex:
+                if (drc / 'reindexed.expt').is_file():
+                    cmd = 'dials.refine reindexed.expt reindexed.refl detector.fix=distance unit_cell.force_static=True nproc=2'
+                else:
+                    cmd = 'dials.refine indexed.expt indexed.refl detector.fix=distance unit_cell.force_static=True nproc=2'
+            else:
+                cmd = 'dials.refine indexed.expt indexed.refl detector.fix=distance unit_cell.force_static=True nproc=2'
+            try:
+                p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
+                p.communicate()
+                FILES.append([])
+            except Exception as e:
+                print("ERROR in subprocess call:", e)
         if split:
             print(f'Start split {fn}')
-            if reindex:
+            if refine:
+                if (drc / 'refine.expt').is_file():
+                    cmd = 'dials.sequence_to_stills.bat refine.expt refine.refl'
+                else:
+                    cmd = 'dials.sequence_to_stills.bat indexed.expt indexed.refl'
+            elif reindex:
                 if (drc / 'reindexed.expt').is_file():
                     cmd = 'dials.sequence_to_stills.bat reindexed.expt reindexed.refl'
                 else:
@@ -77,6 +98,15 @@ def process_data(index, fn, split, write_h5, lock, reindex=False):
         if len(crystals) > len(img_list):
             print(f'There are more than one crystal under the beam for crystal number {index}')
             return -1
+
+        if integrate:
+            cmd = 'dials.ssx_integrate.bat stills.expt stills.refl mosaicity_max_limit=0.01 ellipsoid.unit_cell.fixed=True'
+            try:
+                p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
+                p.communicate()
+                FILES.append([])
+            except Exception as e:
+                print("ERROR in subprocess call:", e)
         
         for index, img_file in enumerate(img_list):
             img, h = read_image(img_file)
@@ -140,12 +170,27 @@ def process_data(index, fn, split, write_h5, lock, reindex=False):
     except:
         traceback.print_exc()
 
-def run_parallel(fns, split, write_h5, lock, reindex=False):
+def run_parallel(fns, split, write_h5, lock, reindex=False, refine=False):
     futures = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         for index, fn in enumerate(fns):
-            futures.append(executor.submit(process_data, index, fn, split, write_h5, lock, reindex))
+            futures.append(executor.submit(process_data, index, fn, split, write_h5, lock, reindex, refine))
     concurrent.futures.wait(futures, return_when=concurrent.futures.ALL_COMPLETED)
+
+    if merge:
+        cmd = f'xia2.ssx_reduce.bat {files} d_min=0.6'
+        try:
+            p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
+            p.communicate()
+        except Exception as e:
+            print("ERROR in subprocess call:", e)
+
+        cmd = f'dials.export.bat DataFiles/scaled.expt DataFiles/scaled.refl format=shelx partiality_threshold=0.5'
+        try:
+            p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
+            p.communicate()
+        except Exception as e:
+            print("ERROR in subprocess call:", e)
 
 def main():
     import argparse
@@ -179,7 +224,19 @@ def main():
                         action="store", type=str, dest="input_file",
                         help="A input file that list all the directories")
 
-    parser.set_defaults(split=False, write_h5=False, reindex=False)
+    parser.add_argument("-int", "--integrate",
+                        action="store", type=bool, dest="integrate",
+                        help="Integrate the splitted results using DIALS")
+
+    parser.add_argument("-m", "--merge",
+                        action="store", type=bool, dest="merge",
+                        help="Merge the integrated results from DIALS")
+
+    parser.add_argument("-r", "--refine",
+                        action="store", type=bool, dest="refine",
+                        help="Whether use DIALS to refine the indexed file before reindex")
+
+    parser.set_defaults(split=False, write_h5=False, reindex=False, refine=False)
 
     options = parser.parse_args()
     fns = options.args
@@ -188,6 +245,7 @@ def main():
     write_h5 = options.write_h5
     reindex = options.reindex
     input_file = options.input_file
+    refine = options.refine
 
     if input_file:
         fns = []
@@ -212,5 +270,5 @@ def main():
     with open(CWD / "indexed.sol", "w") as f:
         pass
     lock = threading.Lock()
-    run_parallel(fns, split, write_h5, lock, reindex)
+    run_parallel(fns, split, write_h5, lock, reindex, refine)
     print(f"\033[KUpdated {len(fns)} files")

@@ -20,8 +20,6 @@ DEVNULL = open(os.devnull, 'w')
 CWD = Path(os.getcwd())
 rlock = threading.RLock()
 spglib = space_group_lib()
-INPUT_FILE_EXIST = False
-FILES = {}
 
 def lattice_type_sym(lattice, unique_axis='c'):
     if lattice[0] == 'a':
@@ -42,7 +40,7 @@ def lattice_type_sym(lattice, unique_axis='c'):
         warn('Invalid lattice type {}'.format(lattice))
         return 'invalid'
 
-def process_data(index, fn, split, write_h5, lock, reindex=False, refine=False, integrate=False):
+def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=False, integrate=False, file_exists=False, space_group=None):
     try:
         print(f'Start processing crystal number {index}.')
         drc = fn.parent/'SMV'
@@ -60,9 +58,9 @@ def process_data(index, fn, split, write_h5, lock, reindex=False, refine=False, 
             else:
                 cmd = 'dials.refine indexed.expt indexed.refl detector.fix=distance unit_cell.force_static=True nproc=2'
             try:
+                print(cmd)
                 p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
                 p.communicate()
-                FILES.append([])
             except Exception as e:
                 print("ERROR in subprocess call:", e)
         if split:
@@ -100,13 +98,24 @@ def process_data(index, fn, split, write_h5, lock, reindex=False, refine=False, 
             return -1
 
         if integrate:
-            cmd = 'dials.ssx_integrate.bat stills.expt stills.refl mosaicity_max_limit=0.01 ellipsoid.unit_cell.fixed=True'
+            cmd = 'dials.ssx_integrate.bat stills.expt stills.refl mosaicity_max_limit=0.1 ellipsoid.unit_cell.fixed=True nproc=2'
             try:
                 p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
                 p.communicate()
-                FILES.append([])
             except Exception as e:
                 print("ERROR in subprocess call:", e)
+        if space_group is not None:
+            cmd = f'dials.reindex integrated_1.refl integrated_1.expt space_group={space_group} out.experiment='
+            try:
+                p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
+                p.communicate()
+            except Exception as e:
+                print("ERROR in subprocess call:", e)
+            targets = drc.glob('integrated_re_*.expt')
+        else:
+            targets = drc.glob('integrated_*.expt')
+        for target in targets:
+            files.append([cwd_smv+'/'+target.name, cwd_smv+'/'+target.name.split('.')[0]+'.refl'])
         
         for index, img_file in enumerate(img_list):
             img, h = read_image(img_file)
@@ -145,7 +154,7 @@ def process_data(index, fn, split, write_h5, lock, reindex=False, refine=False, 
         # generate a .lst file in the directory, append relative path 
 
         with lock:
-            if not INPUT_FILE_EXIST:
+            if not file_exists:
                 with open(CWD / "files.lst", "a") as f:
                     print('./h5/'+h5_filename, file=f)
         # make .sol file, append reciprocal vector: inverse and transpose, in nm-1
@@ -170,24 +179,32 @@ def process_data(index, fn, split, write_h5, lock, reindex=False, refine=False, 
     except:
         traceback.print_exc()
 
-def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refine=False, merge=False, integrate=False):
+def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refine=False, merge=False, integrate=False, file_exists=False, space_group=None):
     futures = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+    FILES = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         for index, fn in enumerate(fns):
-            futures.append(executor.submit(process_data, index, fn, split, write_h5, lock, reindex, refine, integrate))
+            futures.append(executor.submit(process_data, index, fn, split, write_h5, lock, FILES, reindex, refine, integrate, file_exists, space_group))
     concurrent.futures.wait(futures, return_when=concurrent.futures.ALL_COMPLETED)
 
     if merge:
-        cmd = f'xia2.ssx_reduce.bat {files} d_min={d_min}'
+        FILES = list(zip(*FILES))
+        experiments = ' '.join(FILES[0])
+        reflections = ' '.join(FILES[1])
+        print(experiments)
+        cmd = f'xia2.ssx_reduce.bat experiments={experiments} reflections={reflections} d_min={d_min} \
+                    clustering.absolute_angle_tolerance=None clustering.absolute_length_tolerance=None \
+                    partiality_threshold={thresh} space_group={space_group} lattice_symmetry_max_delta=0 \
+                    multiprocessing.nproc=8'
         try:
-            p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
+            p = subprocess.Popen(cmd, cwd=CWD)
             p.communicate()
         except Exception as e:
             print("ERROR in subprocess call:", e)
 
         cmd = f'dials.export.bat DataFiles/scaled.expt DataFiles/scaled.refl format=shelx partiality_threshold={thresh}'
         try:
-            p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
+            p = subprocess.Popen(cmd, cwd=CWD)
             p.communicate()
         except Exception as e:
             print("ERROR in subprocess call:", e)
@@ -228,7 +245,7 @@ def main():
                         action="store", type=bool, dest="integrate",
                         help="Integrate the splitted results using DIALS")
 
-    parser.add_argument("-m", "--merge",
+    parser.add_argument("-mg", "--merge",
                         action="store", type=bool, dest="merge",
                         help="Merge the integrated results from DIALS")
 
@@ -237,12 +254,16 @@ def main():
                         help="Whether use DIALS to refine the indexed file before reindex")
 
     parser.add_argument("-d", "--d_min",
-                        action="store", type=bool, dest="d_min",
+                        action="store", type=float, dest="d_min",
                         help="Minimum distance for ssx_reduce.")
 
     parser.add_argument("-t", "--thresh",
-                        action="store", type=bool, dest="thresh",
+                        action="store", type=float, dest="thresh",
                         help="Partiality threshold for dials.export.")
+
+    parser.add_argument("-sg", "--space_group",
+                        action="store", type=str, dest="space_group",
+                        help="Set the space group for data reduction.")
 
     parser.set_defaults(split=False, write_h5=False, reindex=False, refine=False, d_min=0.8, thresh=0.6)
 
@@ -258,6 +279,8 @@ def main():
     thresh = options.thresh
     merge = options.merge
     integrate = options.integrate
+    INPUT_FILE_EXIST = False
+    space_group = options.space_group
 
     if input_file:
         fns = []
@@ -282,5 +305,5 @@ def main():
     with open(CWD / "indexed.sol", "w") as f:
         pass
     lock = threading.Lock()
-    run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex, refin, merge, integrate)
+    run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex, refine, merge, integrate, INPUT_FILE_EXIST, space_group)
     print(f"\033[KUpdated {len(fns)} files")

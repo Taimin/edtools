@@ -19,8 +19,8 @@ import traceback
 
 
 def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, osc_angle, name, axis,
-             write_smv=False, write_tif=False, integrate=False, center=False, stretch=False, refine=False, symmetry=False, scale=False,
-             merge=False, report=False, export=False):
+             write_smv=False, write_tif=False, integrate=False, center=False, stretch=False, refine=False, 
+             symmetry=False, scale=False, merge=False, report=False, export=False, gain=1):
     if fn.exists():
         shutil.copyfile(fn, fn.with_name("dials_process.bat~"))
 
@@ -125,7 +125,7 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
         print(f'set scan_range={scanrange}', file=f)
         print(f'set exclude_images=exclude_images={excludeimages}', file=f)
         print(f'set rotation_axis=geometry.goniometer.axes={rot_x:.4f},{rot_y:.4f},{rot_z:.4f}', file=f)
-        print(f'call dials.import template=./data/#####.img %rotation_axis% lookup.dx=dx.pickle lookup.dy=dy.pickle panel.gain=7', file=f)
+        print(f'call dials.import template=./data/#####.img %rotation_axis% lookup.dx=dx.pickle lookup.dy=dy.pickle panel.gain={gain}', file=f)
         print(f'call dials.find_spots imported.expt %scan_range% nproc=4', file=f)
         print(f'call dials.index imported.expt strong.refl max_lattices=3 refinement_protocol.n_macro_cycles=2 restrain.phil', file=f)
         if refine:
@@ -254,9 +254,13 @@ def main():
                         action="store", type=int, nargs=2, dest="include_frames",
                         help="Specify frame number to include frames to process")
 
+    parser.add_argument("-g", "--gain",
+                        action="store", type=int, nargs=, dest="gain",
+                        help="Specify the gain value for the detector")
+
     parser.set_defaults(write_smv=False, write_tif=False, integrate=False, center=False, stretch=False, refine=False,
                         symmetry=False, scale=False, merge=False, report=False, export=False,
-                        name='ADSC', skip=None, include_frames=None)
+                        name='ADSC', skip=None, include_frames=None, gain=1)
 
     options = parser.parse_args()
     fns = options.args
@@ -275,6 +279,7 @@ def main():
     match = options.match
     skip = options.skip
     include_frames = options.include_frames
+    gain = options.gain
 
     fns = parse_args_for_fns(fns, name="summary.txt", match=match)
     
@@ -303,7 +308,7 @@ def main():
         update_dials(fn.parent/'SMV'/'dials_process.bat', wavelength, physical_pixelsize, 
                      pixelsize, exposure, phi, osc_angle, name, axis,
                      write_smv=write_smv, write_tif=write_tif, integrate=integrate, center=center, stretch=stretch, refine=refine,
-                     symmetry=symmetry, scale=scale, merge=merge, report=report, export=export)
+                     symmetry=symmetry, scale=scale, merge=merge, report=report, export=export, gain=gain)
 
     print(f"\033[KUpdated {len(fns)} files")
 

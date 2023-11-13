@@ -40,7 +40,11 @@ def main():
                         action="store", type=bool, dest="reindex",
                         help="Whether use reindex file from DIALS to reindex")
 
-    parser.set_defaults(pets2=False, reindex=False)
+    parser.add_argument("-sg", "--space_group",
+                        action="store", type=str, dest="space_group",
+                        help="Specify space group in reindex procedure")
+
+    parser.set_defaults(pets2=False, reindex=False, space_group=None)
 
     options = parser.parse_args()
     fns = options.args
@@ -48,6 +52,7 @@ def main():
     input_file = options.input_file
     pets2 = options.pets2
     reindex = options.reindex
+    space_group =options.space_group
 
     if input_file:
         fns_index = []
@@ -127,7 +132,10 @@ def main():
                 diff_a_c_b =  np.abs(A_matrix@transform_a_c@transform_a_b - ubmatrix).sum()
                 diff_a_b =  np.abs(A_matrix@transform_a_b - ubmatrix).sum()
                 diff = np.abs(A_matrix - ubmatrix).sum()
-                cmd = 'dials.reindex.bat indexed.expt indexed.refl change_of_basis_op='
+                if space_group is None:
+                    cmd = f'dials.reindex.bat indexed.expt indexed.refl change_of_basis_op='
+                else:
+                    cmd = f'dials.reindex.bat indexed.expt indexed.refl space_group={space_group} change_of_basis_op='
                 
                 try:
                     #print(f'a<->c<->b: {diff_a_c_b}, a<->c: {diff_a_c}', file=fr)

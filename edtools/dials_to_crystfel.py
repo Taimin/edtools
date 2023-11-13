@@ -104,9 +104,10 @@ def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=
                 p.communicate()
             except Exception as e:
                 print("ERROR in subprocess call:", e)
-        if space_group is not None:
-            cmd = f'dials.reindex integrated_1.refl integrated_1.expt space_group={space_group} out.experiment='
+        if space_group is not None and (drc/'integrated_1.refl').is_file():
+            cmd = f'dials.reindex.bat integrated_1.refl integrated_1.expt space_group={space_group} output.experiments=integrated_re_1.expt output.reflections=integrated_re_1.refl'
             try:
+                print(cmd)
                 p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
                 p.communicate()
             except Exception as e:

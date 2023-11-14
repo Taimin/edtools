@@ -20,7 +20,8 @@ import traceback
 
 def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, osc_angle, name, axis,
              write_smv=False, write_tif=False, integrate=False, center=False, stretch=False, refine=False, 
-             symmetry=False, scale=False, merge=False, report=False, export=False, gain=1):
+             symmetry=False, scale=False, merge=False, report=False, export=False, gain=1, refine_center=False,
+             ellip_corr=False):
     if fn.exists():
         shutil.copyfile(fn, fn.with_name("dials_process.bat~"))
 
@@ -125,9 +126,16 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
         print(f'set scan_range={scanrange}', file=f)
         print(f'set exclude_images=exclude_images={excludeimages}', file=f)
         print(f'set rotation_axis=geometry.goniometer.axes={rot_x:.4f},{rot_y:.4f},{rot_z:.4f}', file=f)
-        print(f'call dials.import template=./data/#####.img %rotation_axis% lookup.dx=dx.pickle lookup.dy=dy.pickle panel.gain={gain}', file=f)
+        if ellip_corr:
+            print(f'call dials.import template=./data/#####.img %rotation_axis% lookup.dx=dx.pickle lookup.dy=dy.pickle panel.gain={gain}', file=f)
+        else:
+            print(f'call dials.import template=./data/#####.img %rotation_axis% panel.gain={gain}', file=f)
         print(f'call dials.find_spots imported.expt %scan_range% nproc=4', file=f)
-        print(f'call dials.index imported.expt strong.refl max_lattices=3 refinement_protocol.n_macro_cycles=2 restrain.phil', file=f)
+        if refine_center:
+            print(f'call dials.search_beam_position imported.expt strong.refl', file=f)
+            print(f'call dials.index optimised.expt strong.refl max_lattices=3 refinement_protocol.n_macro_cycles=2 restrain.phil', file=f)
+        else:
+            print(f'call dials.index imported.expt strong.refl max_lattices=3 refinement_protocol.n_macro_cycles=2 restrain.phil', file=f)
         if refine:
             print(f'call dials.refine_bravais_settings indexed.expt indexed.refl', file=f)
             print(f'call dials.refine indexed.expt indexed.refl', file=f)
@@ -255,12 +263,20 @@ def main():
                         help="Specify frame number to include frames to process")
 
     parser.add_argument("-g", "--gain",
-                        action="store", type=int, nargs=, dest="gain",
+                        action="store", type=float, dest="gain",
                         help="Specify the gain value for the detector")
+
+    parser.add_argument("-ref_c", "--refine_center",
+                        action="store", type=bool, dest="refine_center",
+                        help="Refine the center position")
+
+    parser.add_argument("-el", "--ellip_corr",
+                        action="store", type=bool, dest="ellip_corr",
+                        help="Use ellipitical correction")
 
     parser.set_defaults(write_smv=False, write_tif=False, integrate=False, center=False, stretch=False, refine=False,
                         symmetry=False, scale=False, merge=False, report=False, export=False,
-                        name='ADSC', skip=None, include_frames=None, gain=1)
+                        name='ADSC', skip=None, include_frames=None, gain=1, refine_center=False, ellip_corr=False)
 
     options = parser.parse_args()
     fns = options.args
@@ -280,6 +296,8 @@ def main():
     skip = options.skip
     include_frames = options.include_frames
     gain = options.gain
+    refine_center = options.refine_center
+    ellip_corr = options.ellip_corr
 
     fns = parse_args_for_fns(fns, name="summary.txt", match=match)
     
@@ -308,7 +326,8 @@ def main():
         update_dials(fn.parent/'SMV'/'dials_process.bat', wavelength, physical_pixelsize, 
                      pixelsize, exposure, phi, osc_angle, name, axis,
                      write_smv=write_smv, write_tif=write_tif, integrate=integrate, center=center, stretch=stretch, refine=refine,
-                     symmetry=symmetry, scale=scale, merge=merge, report=report, export=export, gain=gain)
+                     symmetry=symmetry, scale=scale, merge=merge, report=report, export=export, gain=gain, refine_center=refine_center,
+                     ellip_corr=ellip_corr)
 
     print(f"\033[KUpdated {len(fns)} files")
 

@@ -40,7 +40,8 @@ def lattice_type_sym(lattice, unique_axis='c'):
         warn('Invalid lattice type {}'.format(lattice))
         return 'invalid'
 
-def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=False, integrate=False, file_exists=False, space_group=None):
+def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=False, integrate=False, \
+                file_exists=False, space_group=None, write_sol=False):
     try:
         print(f'Start processing crystal number {index}.')
         drc = fn.parent/'SMV'
@@ -52,9 +53,9 @@ def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=
             print(f'Start refine {fn}')
             if reindex:
                 if (drc / 'reindexed.expt').is_file():
-                    cmd = 'dials.refine reindexed.expt reindexed.refl detector.fix=distance unit_cell.force_static=True nproc=2'
+                    cmd = 'dials.refine.bat reindexed.expt reindexed.refl detector.fix=distance unit_cell.force_static=True nproc=2'
                 else:
-                    cmd = 'dials.refine indexed.expt indexed.refl detector.fix=distance unit_cell.force_static=True nproc=2'
+                    cmd = 'dials.refine.bat indexed.expt indexed.refl detector.fix=distance unit_cell.force_static=True nproc=2'
             else:
                 cmd = 'dials.refine indexed.expt indexed.refl detector.fix=distance unit_cell.force_static=True nproc=2'
             try:
@@ -66,8 +67,8 @@ def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=
         if split:
             print(f'Start split {fn}')
             if refine:
-                if (drc / 'refine.expt').is_file():
-                    cmd = 'dials.sequence_to_stills.bat refine.expt refine.refl'
+                if (drc / 'refined.expt').is_file():
+                    cmd = 'dials.sequence_to_stills.bat refined.expt refined.refl'
                 else:
                     cmd = 'dials.sequence_to_stills.bat indexed.expt indexed.refl'
             elif reindex:
@@ -98,21 +99,21 @@ def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=
             return -1
 
         if integrate:
-            cmd = 'dials.ssx_integrate.bat stills.expt stills.refl mosaicity_max_limit=0.1 ellipsoid.unit_cell.fixed=True nproc=2'
+            cmd = 'dials.ssx_integrate.bat stills.expt stills.refl mosaicity_max_limit=0.2 ellipsoid.unit_cell.fixed=True nproc=2'
             try:
                 p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
                 p.communicate()
             except Exception as e:
                 print("ERROR in subprocess call:", e)
-        if space_group is not None and (drc/'integrated_1.refl').is_file():
-            cmd = f'dials.reindex.bat integrated_1.refl integrated_1.expt space_group={space_group} output.experiments=integrated_re_1.expt output.reflections=integrated_re_1.refl'
+        if space_group is not None and (drc/'integrated_1.refl').is_file() and reindex:
+            cmd = f'dials.reindex.bat integrated_1.refl integrated_1.expt space_group={space_group} output.experiments=re_integrated_1.expt output.reflections=re_integrated_1.refl'
             try:
                 print(cmd)
                 p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
                 p.communicate()
             except Exception as e:
                 print("ERROR in subprocess call:", e)
-            targets = drc.glob('integrated_re_*.expt')
+            targets = drc.glob('re_integrated_*.expt')
         else:
             targets = drc.glob('integrated_*.expt')
         for target in targets:
@@ -160,32 +161,35 @@ def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=
                     print('./h5/'+h5_filename, file=f)
         # make .sol file, append reciprocal vector: inverse and transpose, in nm-1
         # append center: shift from image center in mm
-        with lock:
-            with open(CWD / "indexed.sol", "a") as f:
-                h5_filename = h5_filename.split('.')[0] + '_hit.h5'
-                for index, crystal in enumerate(crystals):
-                    real_sp_matrix = np.array([crystal['real_space_a'], crystal['real_space_b'], crystal['real_space_c']])
-                    real_sp_matrix = real_sp_matrix / 10
-                    reciprocal_sp_matrix = np.linalg.inv(real_sp_matrix).T
-                    reciprocal_sp_matrix[:, 0] = -reciprocal_sp_matrix[:, 0]
-                    reciprocal_sp_matrix = reciprocal_sp_matrix.flatten().tolist()
-                    reciprocal_sp_matrix = [f'{num:.7f}' for num in reciprocal_sp_matrix]
-                    sp = crystal['space_group_hall_symbol'].replace(' ', '')
-                    for num, tmp in spglib.items():
-                        if tmp['name'] == sp:
-                            sp_num = num
-                    lattice = spglib[sp_num]['lattice']
-                    sym = lattice_type_sym(lattice)
-                    print(f"./h5/{h5_filename} entry//{index} {' '.join(reciprocal_sp_matrix)} 0 0 {sym}", file=f)
+        if write_sol:
+            with lock:
+                with open(CWD / "indexed.sol", "a") as f:
+                    h5_filename = h5_filename.split('.')[0] + '_hit.h5'
+                    for index, crystal in enumerate(crystals):
+                        real_sp_matrix = np.array([crystal['real_space_a'], crystal['real_space_b'], crystal['real_space_c']])
+                        real_sp_matrix = real_sp_matrix / 10
+                        reciprocal_sp_matrix = np.linalg.inv(real_sp_matrix).T
+                        reciprocal_sp_matrix[:, 0] = -reciprocal_sp_matrix[:, 0]
+                        reciprocal_sp_matrix = reciprocal_sp_matrix.flatten().tolist()
+                        reciprocal_sp_matrix = [f'{num:.7f}' for num in reciprocal_sp_matrix]
+                        sp = crystal['space_group_hall_symbol'].replace(' ', '')
+                        for num, tmp in spglib.items():
+                            if tmp['name'] == sp:
+                                sp_num = num
+                        lattice = spglib[sp_num]['lattice']
+                        sym = lattice_type_sym(lattice)
+                        print(f"./h5/{h5_filename} entry//{index} {' '.join(reciprocal_sp_matrix)} 0 0 {sym}", file=f)
     except:
         traceback.print_exc()
 
-def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refine=False, merge=False, integrate=False, file_exists=False, space_group=None):
+def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refine=False, merge=False, integrate=False, \
+                file_exists=False, space_group=None, write_sol=False):
     futures = []
     FILES = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         for index, fn in enumerate(fns):
-            futures.append(executor.submit(process_data, index, fn, split, write_h5, lock, FILES, reindex, refine, integrate, file_exists, space_group))
+            futures.append(executor.submit(process_data, index, fn, split, write_h5, lock, FILES, reindex, refine, integrate,\
+                                         file_exists, space_group, write_sol))
     concurrent.futures.wait(futures, return_when=concurrent.futures.ALL_COMPLETED)
 
     if merge:
@@ -193,7 +197,13 @@ def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refin
         experiments = ' '.join(FILES[0])
         reflections = ' '.join(FILES[1])
         print(experiments)
-        cmd = f'xia2.ssx_reduce.bat experiments={experiments} reflections={reflections} d_min={d_min} \
+        if space_group is None:
+            cmd = f'xia2.ssx_reduce.bat experiments={experiments} reflections={reflections} d_min={d_min} \
+                    clustering.absolute_angle_tolerance=None clustering.absolute_length_tolerance=None \
+                    partiality_threshold={thresh} lattice_symmetry_max_delta=0 \
+                    multiprocessing.nproc=8'
+        else:
+            cmd = f'xia2.ssx_reduce.bat experiments={experiments} reflections={reflections} d_min={d_min} \
                     clustering.absolute_angle_tolerance=None clustering.absolute_length_tolerance=None \
                     partiality_threshold={thresh} space_group={space_group} lattice_symmetry_max_delta=0 \
                     multiprocessing.nproc=8'
@@ -266,7 +276,11 @@ def main():
                         action="store", type=str, dest="space_group",
                         help="Set the space group for data reduction.")
 
-    parser.set_defaults(split=False, write_h5=False, reindex=False, refine=False, d_min=0.8, thresh=0.6)
+    parser.add_argument("-w_sol", "--write_sol",
+                        action="store", type=bool, dest="write_sol",
+                        help="Write the sol file.")
+
+    parser.set_defaults(split=False, write_h5=False, reindex=False, refine=False, d_min=0.8, thresh=0.6, space_group=None, write_sol=False)
 
     options = parser.parse_args()
     fns = options.args
@@ -282,6 +296,7 @@ def main():
     integrate = options.integrate
     INPUT_FILE_EXIST = False
     space_group = options.space_group
+    write_sol = options.write_sol
 
     if input_file:
         fns = []
@@ -306,5 +321,5 @@ def main():
     with open(CWD / "indexed.sol", "w") as f:
         pass
     lock = threading.Lock()
-    run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex, refine, merge, integrate, INPUT_FILE_EXIST, space_group)
+    run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex, refine, merge, integrate, INPUT_FILE_EXIST, space_group, write_sol)
     print(f"\033[KUpdated {len(fns)} files")

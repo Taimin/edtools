@@ -86,8 +86,9 @@ def process_data(i, fn, job, restrain, use_server):
         connect(drc)
     else:
         cwd = str(drc)
-        shutil.copy(str(CWD/'dx.pickle'), str(drc/'dx.pickle'))
-        shutil.copy(str(CWD/'dy.pickle'), str(drc/'dy.pickle'))
+        if (CWD/'dx.pickle').is_file():
+            shutil.copy(str(CWD/'dx.pickle'), str(drc/'dx.pickle'))
+            shutil.copy(str(CWD/'dy.pickle'), str(drc/'dy.pickle'))
         if restrain:
             shutil.copy(str(CWD/'restrain.phil'), str(drc/'restrain.phil'))
         else:
@@ -164,7 +165,8 @@ def main():
     if len(fns) == 0:
         return -1
 
-    shutil.copy(str(CWD/'index_results.log'), str(CWD/'~index_results.log'))
+    if (CWD / "index_results.log").is_file():
+        shutil.copy(str(CWD/'index_results.log'), str(CWD/'~index_results.log'))
     with open(CWD / "index_results.log", "w") as f:
         pass
 

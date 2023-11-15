@@ -61,6 +61,7 @@ class dials_parser:
                     infos = [info.strip() for info in crystal[index+2].split('|')]
                     d['indexed'] = int(infos[2])
                     d['unindexed'] = int(infos[3])
+                    d['percent'] = int(infos[2]) / (int(infos[2]) + int(infos[3]))
                 elif line.startswith("    A = UB:"):
                     A_matrix = []
                     tmp = line.split('{')[-1].split(',')[:3]
@@ -72,13 +73,13 @@ class dials_parser:
                     tmp = crystal[index+2].strip().split('{')[-1].split(',')[:3]
                     tmp[2] = tmp[2].split('}')[0]
                     A_matrix.append([float(num) for num in tmp])
-                    A_matrix = np.array(A_matrix)
+                    A_matrix = np.array(A_matrix).flatten()
             d["volume"] = volume(cell)
             d["cell"] = cell
             d["spgr"] = spgr
             d["model_num"] = model_num
             d['A_matrix'] = A_matrix
-            d["fn"] = str(fn)
+            d["fn"] = str(os.path.relpath(fn.parent, CWD))
             d_list.append(copy.deepcopy(d))
         
         return d_list
@@ -352,7 +353,9 @@ def main():
 
         for i, p in enumerate(dials_all):
             i += 1
-            print(p.cell_info(sequence=i))
+            for info in p.cell_info(sequence=i):
+                print(info)
+            print(info)
 
         df = pd.DataFrame.from_dict(records)
         df.to_csv(CWD/'unit_cell.csv')

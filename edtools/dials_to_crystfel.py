@@ -89,7 +89,13 @@ def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=
             crystals = d['crystal']
         # convert every folder to an h5 file, file name is the relative path, save it to the h5 folder in CWD
         # /entry/data/raw_counts   /entry/data/corrected
-        img_list = list(drc.rglob('*.img'))
+        with open(drc/'dials.import.log', 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                if line.startswith('  template ='):
+                    folder = line.split('/')[1]
+
+        img_list = list((drc/folder).glob('*.img'))
         center_list = []
         imgs = []
         frame_list = []

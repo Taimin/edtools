@@ -121,7 +121,7 @@ def main():
                     fn_i = os.path.relpath(fn_i.parent, CWD)
                     for crystal in crystals.d:
                         print(f'{fn_i}', file=fr)
-                        A_matrix = crystal['A_matrix']
+                        A_matrix = crystal['A_matrix'].reshape(3, 3)
                         print(f'{A_matrix}', file=fr)
                         uc = np.array(crystal['cell'])
                         print(f'{uc}', file=fr)

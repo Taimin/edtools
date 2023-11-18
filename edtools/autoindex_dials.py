@@ -86,9 +86,6 @@ def process_data(i, fn, job, restrain, use_server):
         connect(drc)
     else:
         cwd = str(drc)
-        if (CWD/'dx.pickle').is_file():
-            shutil.copy(str(CWD/'dx.pickle'), str(drc/'dx.pickle'))
-            shutil.copy(str(CWD/'dy.pickle'), str(drc/'dy.pickle'))
         if restrain:
             shutil.copy(str(CWD/'restrain.phil'), str(drc/'restrain.phil'))
         else:

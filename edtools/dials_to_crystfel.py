@@ -41,7 +41,7 @@ def lattice_type_sym(lattice, unique_axis='c'):
         return 'invalid'
 
 def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=False, integrate=False, \
-                file_exists=False, space_group=None, write_sol=False):
+                integrate_sweep=False, scale_sweep=False, file_exists=False, space_group=None, write_sol=False):
     try:
         print(f'Start processing crystal number {index}.')
         drc = fn.parent/'SMV'
@@ -57,7 +57,7 @@ def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=
                 else:
                     cmd = 'dials.refine.bat indexed.expt indexed.refl detector.fix=distance unit_cell.force_static=True nproc=2'
             else:
-                cmd = 'dials.refine indexed.expt indexed.refl detector.fix=distance unit_cell.force_static=True nproc=2'
+                cmd = 'dials.refine.bat indexed.expt indexed.refl detector.fix=distance unit_cell.force_static=True nproc=2'
             try:
                 print(cmd)
                 p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
@@ -104,6 +104,19 @@ def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=
             print(f'There are more than one crystal under the beam for crystal number {index}')
             return -1
 
+        if integrate_sweep:
+            if refine:
+                cmd = 'dials.integrate.bat refined.expt refined.refl nproc=2'
+            elif reindex:
+                cmd = 'dials.integrate.bat reindexed.expt reindexed.refl nproc=2'
+            else:
+                cmd = 'dials.integrate.bat indexed.expt indexed.refl nproc=2'
+            try:
+                p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
+                p.communicate()
+            except Exception as e:
+                print("ERROR in subprocess call:", e)
+
         if integrate:
             cmd = 'dials.ssx_integrate.bat stills.expt stills.refl mosaicity_max_limit=0.2 ellipsoid.unit_cell.fixed=True nproc=2'
             try:
@@ -119,12 +132,16 @@ def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=
                 p.communicate()
             except Exception as e:
                 print("ERROR in subprocess call:", e)
-            targets = drc.glob('re_integrated_*.expt')
+            target = list(drc.glob('re_integrated_1.expt'))[0]
         else:
-            targets = drc.glob('integrated_*.expt')
-        for target in targets:
+            target = list(drc.glob('integrated_1.expt'))[0]
+        if scale_sweep:
+            target_1 = list(drc.glob('integrated.expt'))[0]
+        if scale_sweep:
+            files.append([cwd_smv+'/'+target.name, cwd_smv+'/'+target.name.split('.')[0]+'.refl', cwd_smv+'/'+target_1.name, cwd_smv+'/'+target_1.name.split('.')[0]+'.refl'])
+        else:
             files.append([cwd_smv+'/'+target.name, cwd_smv+'/'+target.name.split('.')[0]+'.refl'])
-        
+
         for index, img_file in enumerate(img_list):
             img, h = read_image(img_file)
             imgs.append(img)
@@ -189,31 +206,54 @@ def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=
         traceback.print_exc()
 
 def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refine=False, merge=False, integrate=False, \
-                file_exists=False, space_group=None, write_sol=False):
+                integrate_sweep=False, scale_sweep=False, file_exists=False, space_group=None, write_sol=False):
     futures = []
     FILES = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         for index, fn in enumerate(fns):
             futures.append(executor.submit(process_data, index, fn, split, write_h5, lock, FILES, reindex, refine, integrate,\
-                                         file_exists, space_group, write_sol))
+                                         integrate_sweep, scale_sweep, file_exists, space_group, write_sol))
     concurrent.futures.wait(futures, return_when=concurrent.futures.ALL_COMPLETED)
 
     if merge:
         FILES = list(zip(*FILES))
         experiments = ' '.join(FILES[0])
         reflections = ' '.join(FILES[1])
-        print(experiments)
+        if scale_sweep:
+            experiments_sweep = ' '.join(FILES[2])
+            reflections_sweep = ' '.join(FILES[3])
+            cmd = f'dials.scale.bat {experiments_sweep} {reflections_sweep} d_min={d_min} output.unmerged_mtz=scaled.mtz'
+            try:
+                p = subprocess.Popen(cmd, cwd=CWD)
+                p.communicate()
+            except Exception as e:
+                print("ERROR in subprocess call:", e)
         if space_group is None:
-            cmd = f'xia2.ssx_reduce.bat experiments={experiments} reflections={reflections} d_min={d_min} \
-                    clustering.absolute_angle_tolerance=None clustering.absolute_length_tolerance=None \
-                    partiality_threshold={thresh} lattice_symmetry_max_delta=0 \
-                    multiprocessing.nproc=8'
+            if scale_sweep:
+                reference = 'scaled.mtz'
+                cmd = f'xia2.ssx_reduce.bat experiments={experiments} reflections={reflections} d_min={d_min} \
+                        clustering.absolute_angle_tolerance=None clustering.absolute_length_tolerance=None \
+                        partiality_threshold={thresh} lattice_symmetry_max_delta=0 \
+                        multiprocessing.nproc=8 reference={reference}'
+            else:
+                cmd = f'xia2.ssx_reduce.bat experiments={experiments} reflections={reflections} d_min={d_min} \
+                        clustering.absolute_angle_tolerance=None clustering.absolute_length_tolerance=None \
+                        partiality_threshold={thresh} lattice_symmetry_max_delta=0 \
+                        multiprocessing.nproc=8 reference=ZSM-5.cif'
         else:
-            cmd = f'xia2.ssx_reduce.bat experiments={experiments} reflections={reflections} d_min={d_min} \
-                    clustering.absolute_angle_tolerance=None clustering.absolute_length_tolerance=None \
-                    partiality_threshold={thresh} space_group={space_group} lattice_symmetry_max_delta=0 \
-                    multiprocessing.nproc=8'
+            if scale_sweep:
+                reference = 'scaled.mtz'
+                cmd = f'xia2.ssx_reduce.bat experiments={experiments} reflections={reflections} d_min={d_min} \
+                        clustering.absolute_angle_tolerance=None clustering.absolute_length_tolerance=None \
+                        partiality_threshold={thresh} space_group={space_group} lattice_symmetry_max_delta=0 \
+                        multiprocessing.nproc=8 reference={reference}'
+            else:
+                cmd = f'xia2.ssx_reduce.bat experiments={experiments} reflections={reflections} d_min={d_min} \
+                        clustering.absolute_angle_tolerance=None clustering.absolute_length_tolerance=None \
+                        partiality_threshold={thresh} space_group={space_group} lattice_symmetry_max_delta=0 \
+                        multiprocessing.nproc=8 reference=ZSM-5.cif'
         try:
+            print(cmd)
             p = subprocess.Popen(cmd, cwd=CWD)
             p.communicate()
         except Exception as e:
@@ -262,6 +302,14 @@ def main():
                         action="store", type=bool, dest="integrate",
                         help="Integrate the splitted results using DIALS")
 
+    parser.add_argument("-int_s", "--integrate_sweep",
+                        action="store", type=bool, dest="integrate_sweep",
+                        help="Integrate the dataset as a sweep")
+
+    parser.add_argument("-sca_s", "--scale_sweep",
+                        action="store", type=bool, dest="scale_sweep",
+                        help="Scale a sweep dataset")
+
     parser.add_argument("-mg", "--merge",
                         action="store", type=bool, dest="merge",
                         help="Merge the integrated results from DIALS")
@@ -300,9 +348,11 @@ def main():
     thresh = options.thresh
     merge = options.merge
     integrate = options.integrate
+    integrate_sweep = options.integrate_sweep
     INPUT_FILE_EXIST = False
     space_group = options.space_group
     write_sol = options.write_sol
+    scale_sweep = options.scale_sweep
 
     if input_file:
         fns = []
@@ -327,5 +377,6 @@ def main():
     with open(CWD / "indexed.sol", "w") as f:
         pass
     lock = threading.Lock()
-    run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex, refine, merge, integrate, INPUT_FILE_EXIST, space_group, write_sol)
+    run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex, refine, merge, integrate, integrate_sweep, \
+                scale_sweep, INPUT_FILE_EXIST, space_group, write_sol)
     print(f"\033[KUpdated {len(fns)} files")

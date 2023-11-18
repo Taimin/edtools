@@ -137,24 +137,26 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
         print(f'set scan_range={scanrange}', file=f)
         print(f'set exclude_images=exclude_images={excludeimages}', file=f)
         print(f'set rotation_axis=geometry.goniometer.axes={rot_x:.4f},{rot_y:.4f},{rot_z:.4f}', file=f)
-        if ellip_corr:
-            print(f'call dials.import template=./data_{select_n}/#####.img %rotation_axis% lookup.dx=dx.pickle lookup.dy=dy.pickle panel.gain={gain}', file=f)
+        if select_n == 1:
+            print(f'call dials.import template=./data/#####.img %rotation_axis% panel.gain={gain}', file=f)
         else:
+            print(f'call dials.import template=./data_{select_n}/#####.img %rotation_axis% panel.gain={gain}', file=f)
+        if ellip_corr is not None:
+            l1 = 1/np.sqrt(ellip_corr[0])
+            l2 = np.sqrt(ellip_corr[0])
+            print(f'dials.generate_distortion_maps.bat imported.expt mode=ellipse phi={ellip_corr[1]} l1={l1} l2={l2}', file=f)
             if select_n == 1:
-                print(f'call dials.import template=./data/#####.img %rotation_axis% panel.gain={gain}', file=f)
+                print(f'call dials.import template=./data/#####.img %rotation_axis% lookup.dx=dx.pickle lookup.dy=dy.pickle panel.gain={gain}', file=f)
             else:
-                print(f'call dials.import template=./data_{select_n}/#####.img %rotation_axis% panel.gain={gain}', file=f)
-        print(f'call dials.find_spots imported.expt %scan_range% nproc=4', file=f)
+                print(f'call dials.import template=./data_{select_n}/#####.img %rotation_axis% lookup.dx=dx.pickle lookup.dy=dy.pickle panel.gain={gain}', file=f)
+        print(f'call dials.find_spots imported.expt %scan_range% nproc=2', file=f)
         if refine_center:
             print(f'call dials.search_beam_position imported.expt strong.refl', file=f)
-            print(f'call dials.index optimised.expt strong.refl restrain.phil', file=f)
+            print(f'call dials.index optimised.expt strong.refl restrain.phil nproc=2', file=f)
         else:
-            print(f'call dials.index imported.expt strong.refl restrain.phil', file=f)
+            print(f'call dials.index imported.expt strong.refl restrain.phil nproc=2', file=f)
         if refine:
-            print(f'call dials.refine_bravais_settings indexed.expt indexed.refl', file=f)
-            print(f'call dials.refine indexed.expt indexed.refl', file=f)
-        if integrate:
-            print(f'call dials.integrate refined.expt refined.refl nproc=8', file=f)
+            print(f'call dials.integrate refined.expt refined.refl nproc=2', file=f)
         if symmetry:
             print(f'call dials.symmetry integrated.expt integrated.refl', file=f)
         if scale:
@@ -285,7 +287,7 @@ def main():
                         help="Refine the center position")
 
     parser.add_argument("-el", "--ellip_corr",
-                        action="store", type=bool, dest="ellip_corr",
+                        action="store", type=float, nargs=2, dest="ellip_corr",
                         help="Use ellipitical correction")
 
     parser.add_argument("-sel_n", "--select_n",
@@ -294,7 +296,7 @@ def main():
 
     parser.set_defaults(write_smv=False, write_tif=False, integrate=False, center=False, stretch=False, refine=False,
                         symmetry=False, scale=False, merge=False, report=False, export=False,
-                        name='ADSC', skip=None, include_frames=None, gain=1, refine_center=False, ellip_corr=False,
+                        name='ADSC', skip=None, include_frames=None, gain=1, refine_center=False, ellip_corr=None,
                         select_n=1)
 
     options = parser.parse_args()

@@ -20,7 +20,7 @@ import traceback
 
 def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, osc_angle, name, axis,
              write_smv=False, write_tif=False, integrate=False, center=False, stretch=False, refine=False, 
-             symmetry=False, scale=False, merge=False, report=False, export=False, gain=1, refine_center=False,
+             symmetry=False, scale=False, report=False, export=False, gain=1, refine_center=False,
              ellip_corr=False, select_n=1):
     if fn.exists():
         shutil.copyfile(fn, fn.with_name("dials_process.bat~"))
@@ -161,8 +161,6 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
             print(f'call dials.symmetry integrated.expt integrated.refl', file=f)
         if scale:
             print(f'call dials.scale symmetrized.expt symmetrized.refl', file=f)
-        if merge:
-            print(f'call dials.merge scaled.expt scaled.refl', file=f)
         if report:
             print(f'call dials.report scaled.expt scaled.refl', file=f)
         if export:
@@ -254,10 +252,6 @@ def main():
                         action="store", type=bool, dest="symmetry",
                         help="Check the symmetry of the data")
 
-    parser.add_argument("-meg", "--merge",
-                        action="store", type=bool, dest="merge",
-                        help="Merge the data")
-
     parser.add_argument("-sca", "--scale",
                         action="store", type=bool, dest="scale",
                         help="Scale the data")
@@ -295,7 +289,7 @@ def main():
                         help="Select 1 frame in every n frames.")
 
     parser.set_defaults(write_smv=False, write_tif=False, integrate=False, center=False, stretch=False, refine=False,
-                        symmetry=False, scale=False, merge=False, report=False, export=False,
+                        symmetry=False, scale=False, report=False, export=False,
                         name='ADSC', skip=None, include_frames=None, gain=1, refine_center=False, ellip_corr=None,
                         select_n=1)
 
@@ -309,7 +303,6 @@ def main():
     refine = options.refine
     symmetry = options.symmetry
     scale = options.scale
-    merge = options.merge
     report = options.report
     export = options.export
     name = options.name
@@ -351,7 +344,7 @@ def main():
         update_dials(fn.parent/'SMV'/'dials_process.bat', wavelength, physical_pixelsize, 
                      pixelsize, exposure, phi, osc_angle, name, axis,
                      write_smv=write_smv, write_tif=write_tif, integrate=integrate, center=center, stretch=stretch, refine=refine,
-                     symmetry=symmetry, scale=scale, merge=merge, report=report, export=export, gain=gain, refine_center=refine_center,
+                     symmetry=symmetry, scale=scale, report=report, export=export, gain=gain, refine_center=refine_center,
                      ellip_corr=ellip_corr, select_n=select_n)
 
     print(f"\033[KUpdated {len(fns)} files")

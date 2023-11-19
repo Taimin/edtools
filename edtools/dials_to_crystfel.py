@@ -231,15 +231,15 @@ def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refin
         if space_group is None:
             if scale_sweep:
                 reference = 'scaled.mtz'
-                cmd = f'xia2.ssx_reduce.bat experiments={experiments} reflections={reflections} d_min={d_min} \
+                cmd = f'xia2.ssx_reduce.bat experiments={experiments_sweep} reflections={reflections_sweep} d_min={d_min} \
                         clustering.absolute_angle_tolerance=None clustering.absolute_length_tolerance=None \
                         partiality_threshold={thresh} lattice_symmetry_max_delta=0 \
-                        multiprocessing.nproc=8 reference={reference}'
+                        multiprocessing.nproc=8'
             else:
-                cmd = f'xia2.ssx_reduce.bat experiments={experiments} reflections={reflections} d_min={d_min} \
+                cmd = f'xia2.ssx_reduce.bat experiments={experiments_sweep} reflections={reflections_sweep} d_min={d_min} \
                         clustering.absolute_angle_tolerance=None clustering.absolute_length_tolerance=None \
                         partiality_threshold={thresh} lattice_symmetry_max_delta=0 \
-                        multiprocessing.nproc=8 reference=ZSM-5.cif'
+                        multiprocessing.nproc=8'
         else:
             if scale_sweep:
                 reference = 'scaled.mtz'
@@ -251,7 +251,7 @@ def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refin
                 cmd = f'xia2.ssx_reduce.bat experiments={experiments} reflections={reflections} d_min={d_min} \
                         clustering.absolute_angle_tolerance=None clustering.absolute_length_tolerance=None \
                         partiality_threshold={thresh} space_group={space_group} lattice_symmetry_max_delta=0 \
-                        multiprocessing.nproc=8 reference=ZSM-5.cif'
+                        multiprocessing.nproc=8'
         try:
             print(cmd)
             p = subprocess.Popen(cmd, cwd=CWD)

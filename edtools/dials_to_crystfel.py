@@ -41,7 +41,7 @@ def lattice_type_sym(lattice, unique_axis='c'):
         return 'invalid'
 
 def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=False, integrate=False, \
-                integrate_sweep=False, scale_sweep=False, file_exists=False, space_group=None, write_sol=False):
+                integrate_sweep=False, scale_sweep=False, file_exists=False, space_group=None, write_sol=False, merge=False):
     try:
         print(f'Start processing crystal number {index}.')
         drc = fn.parent/'SMV'
@@ -49,6 +49,19 @@ def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=
         if not (drc / 'indexed.expt').is_file() and not (drc / 'indexed.refl').is_file():
             print(f'indexed.expt or indexed.refl file does not exist for crystal number {index}.')
             return -1
+
+        if reindex:
+            print(f'Start reindex {fn}')
+            if space_group is None:
+                pass
+            else:
+                cmd = f'dials.reindex.bat indexed.expt indexed.refl space_group={space_group}'
+            try:
+                print(cmd)
+                p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
+                p.communicate()
+            except Exception as e:
+                print("ERROR in subprocess call:", e)
         if refine:
             print(f'Start refine {fn}')
             if reindex:
@@ -118,29 +131,30 @@ def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=
                 print("ERROR in subprocess call:", e)
 
         if integrate:
-            cmd = 'dials.ssx_integrate.bat stills.expt stills.refl mosaicity_max_limit=0.2 ellipsoid.unit_cell.fixed=True nproc=2'
+            cmd = 'dials.ssx_integrate.bat stills.expt stills.refl mosaicity_max_limit=1 ellipsoid.unit_cell.fixed=True nproc=2'
             try:
                 p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
                 p.communicate()
             except Exception as e:
                 print("ERROR in subprocess call:", e)
-        if space_group is not None and (drc/'integrated_1.refl').is_file() and reindex:
-            cmd = f'dials.reindex.bat integrated_1.refl integrated_1.expt space_group={space_group} output.experiments=re_integrated_1.expt output.reflections=re_integrated_1.refl'
-            try:
-                print(cmd)
-                p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
-                p.communicate()
-            except Exception as e:
-                print("ERROR in subprocess call:", e)
-            target = list(drc.glob('re_integrated_1.expt'))[0]
-        else:
+        if merge:
+            #if space_group is not None and (drc/'integrated_1.refl').is_file() and reindex:
+            #    cmd = f'dials.reindex.bat integrated_1.refl integrated_1.expt space_group={space_group} output.experiments=re_integrated_1.expt output.reflections=re_integrated_1.refl'
+            #    try:
+            #        print(cmd)
+            #        p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
+            #        p.communicate()
+            #    except Exception as e:
+            #        print("ERROR in subprocess call:", e)
+            #    target = list(drc.glob('re_integrated_1.expt'))[0]
+            #else:
             target = list(drc.glob('integrated_1.expt'))[0]
-        if scale_sweep:
-            target_1 = list(drc.glob('integrated.expt'))[0]
-        if scale_sweep:
-            files.append([cwd_smv+'/'+target.name, cwd_smv+'/'+target.name.split('.')[0]+'.refl', cwd_smv+'/'+target_1.name, cwd_smv+'/'+target_1.name.split('.')[0]+'.refl'])
-        else:
-            files.append([cwd_smv+'/'+target.name, cwd_smv+'/'+target.name.split('.')[0]+'.refl'])
+            if scale_sweep:
+                target_1 = list(drc.glob('integrated.expt'))[0]
+            if scale_sweep:
+                files.append([cwd_smv+'/'+target.name, cwd_smv+'/'+target.name.split('.')[0]+'.refl', cwd_smv+'/'+target_1.name, cwd_smv+'/'+target_1.name.split('.')[0]+'.refl'])
+            else:
+                files.append([cwd_smv+'/'+target.name, cwd_smv+'/'+target.name.split('.')[0]+'.refl'])
 
         for index, img_file in enumerate(img_list):
             img, h = read_image(img_file)
@@ -212,7 +226,7 @@ def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refin
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         for index, fn in enumerate(fns):
             futures.append(executor.submit(process_data, index, fn, split, write_h5, lock, FILES, reindex, refine, integrate,\
-                                         integrate_sweep, scale_sweep, file_exists, space_group, write_sol))
+                                         integrate_sweep, scale_sweep, file_exists, space_group, write_sol, merge))
     concurrent.futures.wait(futures, return_when=concurrent.futures.ALL_COMPLETED)
 
     if merge:
@@ -228,32 +242,31 @@ def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refin
                 p.communicate()
             except Exception as e:
                 print("ERROR in subprocess call:", e)
-        if space_group is None:
+
+        with open(CWD/'merge.phil', 'w') as f:
+            print("input {", file=f)
+            for experiment, reflection in zip(FILES[0], FILES[1]):
+                print(f'  experiments={experiment}', file=f)
+                print(f'  reflections={reflection}', file=f)
+            print("}", file=f)
+            print('multiprocessing.nproc = 8', file=f)
+            print('clustering {', file=f)
+            print(f'  absolute_angle_tolerance=None', file=f)
+            print(f'  absolute_length_tolerance=None', file=f)
+            print('}', file=f)
+            print(f'partiality_threshold = {thresh}', file=f)
+            print(f'd_min = {d_min}', file=f)
+            print('symmetry {', file=f)
+            print(f'  lattice_symmetry_max_delta=0', file=f)
+            if space_group is not None: 
+                print(f'  space_group = {space_group}', file=f)
+            print('}', file=f)
             if scale_sweep:
                 reference = 'scaled.mtz'
-                cmd = f'xia2.ssx_reduce.bat experiments={experiments_sweep} reflections={reflections_sweep} d_min={d_min} \
-                        clustering.absolute_angle_tolerance=None clustering.absolute_length_tolerance=None \
-                        partiality_threshold={thresh} lattice_symmetry_max_delta=0 \
-                        multiprocessing.nproc=8'
-            else:
-                cmd = f'xia2.ssx_reduce.bat experiments={experiments_sweep} reflections={reflections_sweep} d_min={d_min} \
-                        clustering.absolute_angle_tolerance=None clustering.absolute_length_tolerance=None \
-                        partiality_threshold={thresh} lattice_symmetry_max_delta=0 \
-                        multiprocessing.nproc=8'
-        else:
-            if scale_sweep:
-                reference = 'scaled.mtz'
-                cmd = f'xia2.ssx_reduce.bat experiments={experiments} reflections={reflections} d_min={d_min} \
-                        clustering.absolute_angle_tolerance=None clustering.absolute_length_tolerance=None \
-                        partiality_threshold={thresh} space_group={space_group} lattice_symmetry_max_delta=0 \
-                        multiprocessing.nproc=8 reference={reference}'
-            else:
-                cmd = f'xia2.ssx_reduce.bat experiments={experiments} reflections={reflections} d_min={d_min} \
-                        clustering.absolute_angle_tolerance=None clustering.absolute_length_tolerance=None \
-                        partiality_threshold={thresh} space_group={space_group} lattice_symmetry_max_delta=0 \
-                        multiprocessing.nproc=8'
+                print(f'reference = {reference}', file=f)
+
+        cmd = f'xia2.ssx_reduce.bat merge.phil'
         try:
-            print(cmd)
             p = subprocess.Popen(cmd, cwd=CWD)
             p.communicate()
         except Exception as e:

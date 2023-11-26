@@ -7,6 +7,7 @@ import h5py
 import subprocess
 import json
 import traceback
+import yaml
 import concurrent.futures
 
 from instamatic import config
@@ -40,7 +41,7 @@ def lattice_type_sym(lattice, unique_axis='c'):
         warn('Invalid lattice type {}'.format(lattice))
         return 'invalid'
 
-def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=False, integrate=False, \
+def process_data(index, fn, split, write_h5, lock, files, d_min, reindex=False, refine=False, integrate=False, \
                 integrate_sweep=False, scale_sweep=False, file_exists=False, space_group=None, write_sol=False, merge=False):
     try:
         print(f'Start processing crystal number {index}.')
@@ -50,18 +51,18 @@ def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=
             print(f'indexed.expt or indexed.refl file does not exist for crystal number {index}.')
             return -1
 
-        if reindex:
-            print(f'Start reindex {fn}')
-            if space_group is None:
-                pass
-            else:
-                cmd = f'dials.reindex.bat indexed.expt indexed.refl space_group={space_group}'
-            try:
-                print(cmd)
-                p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
-                p.communicate()
-            except Exception as e:
-                print("ERROR in subprocess call:", e)
+        #if reindex:
+        #    print(f'Start reindex {fn}')
+        #    if space_group is None:
+        #        pass
+        #    else:
+        #        cmd = f'dials.reindex.bat indexed.expt indexed.refl space_group={space_group}'
+        #    try:
+        #        print(cmd)
+        #        p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
+        #        p.communicate()
+        #    except Exception as e:
+        #        print("ERROR in subprocess call:", e)
         if refine:
             print(f'Start refine {fn}')
             if reindex:
@@ -131,24 +132,28 @@ def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=
                 print("ERROR in subprocess call:", e)
 
         if integrate:
-            cmd = 'dials.ssx_integrate.bat stills.expt stills.refl mosaicity_max_limit=1 ellipsoid.unit_cell.fixed=True nproc=2'
+            cmd = f'dials.ssx_integrate.bat stills.expt stills.refl prediction.d_min={d_min} mosaicity_max_limit=0.2 ellipsoid.unit_cell.fixed=True min_n_reflections=5 nproc=2'
             try:
                 p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
                 p.communicate()
             except Exception as e:
                 print("ERROR in subprocess call:", e)
         if merge:
-            #if space_group is not None and (drc/'integrated_1.refl').is_file() and reindex:
-            #    cmd = f'dials.reindex.bat integrated_1.refl integrated_1.expt space_group={space_group} output.experiments=re_integrated_1.expt output.reflections=re_integrated_1.refl'
-            #    try:
-            #        print(cmd)
-            #        p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
-            #        p.communicate()
-            #    except Exception as e:
-            #        print("ERROR in subprocess call:", e)
-            #    target = list(drc.glob('re_integrated_1.expt'))[0]
-            #else:
-            target = list(drc.glob('integrated_1.expt'))[0]
+            if not (drc/'integrated_1.refl').is_file():
+                print(f"{drc/'integrated_1.refl'} file does not exist.")
+                return -1
+            if space_group is not None:
+                cmd = f'dials.reindex.bat integrated_1.refl integrated_1.expt space_group={space_group} output.experiments=re_integrated_1.expt output.reflections=re_integrated_1.refl'
+                try:
+                    print(f'Start changing space group for {fn}')
+                    p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
+                    p.communicate()
+                    target = list(drc.glob('re_integrated_1.expt'))[0]
+                except Exception as e:
+                    print("ERROR in subprocess call:", e)
+            elif space_group is None:
+                target = list(drc.glob('integrated_1.expt'))[0]
+
             if scale_sweep:
                 target_1 = list(drc.glob('integrated.expt'))[0]
             if scale_sweep:
@@ -156,17 +161,17 @@ def process_data(index, fn, split, write_h5, lock, files, reindex=False, refine=
             else:
                 files.append([cwd_smv+'/'+target.name, cwd_smv+'/'+target.name.split('.')[0]+'.refl'])
 
-        for index, img_file in enumerate(img_list):
-            img, h = read_image(img_file)
-            imgs.append(img)
-            center = [float(h['BEAM_CENTER_Y']), float(h['BEAM_CENTER_X'])]
-            center_list.append(center)
-            frame_list.append(index)
-            event_list.append(f'entry//{index}')
-        
-        h5_filename = '_'.join(os.path.relpath(img_file.parent, CWD).split(os.sep))
+        h5_filename = '_'.join(os.path.relpath(img_list[0].parent, CWD).split(os.sep))
         h5_filename = h5_filename + '.h5'
         if write_h5:
+            for index, img_file in enumerate(img_list):
+                img, h = read_image(img_file)
+                imgs.append(img)
+                center = [float(h['BEAM_CENTER_Y']), float(h['BEAM_CENTER_X'])]
+                center_list.append(center)
+                frame_list.append(index)
+                event_list.append(f'entry//{index}')
+
             file_list = ['./h5/'+h5_filename] * len(img_list)
             file_list = [s.encode('utf-8') for s in file_list]
             imgs = np.array(imgs)
@@ -225,7 +230,7 @@ def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refin
     FILES = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         for index, fn in enumerate(fns):
-            futures.append(executor.submit(process_data, index, fn, split, write_h5, lock, FILES, reindex, refine, integrate,\
+            futures.append(executor.submit(process_data, index, fn, split, write_h5, lock, FILES, d_min, reindex, refine, integrate,\
                                          integrate_sweep, scale_sweep, file_exists, space_group, write_sol, merge))
     concurrent.futures.wait(futures, return_when=concurrent.futures.ALL_COMPLETED)
 
@@ -251,8 +256,8 @@ def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refin
             print("}", file=f)
             print('multiprocessing.nproc = 8', file=f)
             print('clustering {', file=f)
-            print(f'  absolute_angle_tolerance=None', file=f)
-            print(f'  absolute_length_tolerance=None', file=f)
+            print(f'  absolute_angle_tolerance=1.5', file=f)
+            print(f'  absolute_length_tolerance=1', file=f)
             print('}', file=f)
             print(f'partiality_threshold = {thresh}', file=f)
             print(f'd_min = {d_min}', file=f)
@@ -308,7 +313,7 @@ def main():
                         help="Convert reindex results instead of index results")
 
     parser.add_argument("-i", "--input_file",
-                        action="store", type=str, dest="input_file",
+                        action="store", type=bool, dest="input_file",
                         help="A input file that list all the directories")
 
     parser.add_argument("-int", "--integrate",
@@ -347,10 +352,11 @@ def main():
                         action="store", type=bool, dest="write_sol",
                         help="Write the sol file.")
 
-    parser.set_defaults(split=False, write_h5=False, reindex=False, refine=False, d_min=0.8, thresh=0.6, space_group=None, write_sol=False)
+    parser.set_defaults(split=False, write_h5=False, reindex=False, refine=False, d_min=0.8, thresh=0.6, 
+                        input_file=False, space_group=None, write_sol=False)
 
     options = parser.parse_args()
-    fns = options.args
+    args = options.args
     match = options.match
     split = options.split
     write_h5 = options.write_h5
@@ -362,22 +368,27 @@ def main():
     merge = options.merge
     integrate = options.integrate
     integrate_sweep = options.integrate_sweep
-    INPUT_FILE_EXIST = False
     space_group = options.space_group
     write_sol = options.write_sol
     scale_sweep = options.scale_sweep
 
-    if input_file:
+    if args:
         fns = []
-        INPUT_FILE_EXIST = True
-        with open(input_file, 'r') as f:
-            lines = f.readlines()
-            for line in lines:
-                line = line.split('/')[-1].split('_')
-                folder = ['_'.join(line[0:3]), '_'.join(line[3:5])]
-                folder = '/'.join(folder)
-                file = Path('./' + folder) / "summary.txt"
-                fns.append(file)
+        for arg in args:
+            if arg.split('.')[-1] == "yaml":
+                ds = yaml.load(open(arg, "r"), Loader=yaml.Loader)
+                for d in ds:
+                    fns.append(Path(d['directory']))
+            elif arg.split('.')[-1] == "lst":
+                with open(arg, 'r') as f:
+                    lines = f.readlines()
+                    for line in lines:
+                        line = line.split('/')[-1].split('_')
+                        folder = ['_'.join(line[0:3]), '_'.join(line[3:5])]
+                        folder = '/'.join(folder)
+                        file = Path('./' + folder) / "summary.txt"
+                        fns.append(file)
+        fns = [fn.resolve() for fn in fns]
     else:
         fns = parse_args_for_fns(fns, name="summary.txt", match=match)
 
@@ -391,5 +402,5 @@ def main():
         pass
     lock = threading.Lock()
     run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex, refine, merge, integrate, integrate_sweep, \
-                scale_sweep, INPUT_FILE_EXIST, space_group, write_sol)
+                scale_sweep, input_file, space_group, write_sol)
     print(f"\033[KUpdated {len(fns)} files")

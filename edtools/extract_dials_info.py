@@ -8,6 +8,7 @@ from .utils import space_group_lib
 import copy
 import pandas as pd
 import numpy as np
+import yaml
 
 spglib = space_group_lib()
 CWD = Path(os.getcwd())
@@ -98,7 +99,7 @@ class dials_parser:
             s += "Spgr {} - Cell {:10.2f}{:10.2f}{:10.2f}{:10.2f}{:10.2f}{:10.2f} - Vol {:10.2f} Indexed: {} Unindexed: {}\n"\
                     .format(crystal["spgr"], *crystal["cell"], crystal["volume"], crystal["indexed"], crystal["unindexed"])
             s += f"# Model {model_num} # Indexed: {crystal['indexed']} # Unindexed: {crystal['unindexed']} \
-                    # Percentage: {crystal['indexed']/(crystal['indexed']+crystal['unindexed']):.1%} #\n"
+                    # Percentage: {crystal['percent']:.1%} #\n"
             s_list.append(s)
         return s_list
 
@@ -129,177 +130,25 @@ class dials_parser:
 
         return s
 
-
-def cells_to_excel(ps, fn="cells.xlsx"):
-    """Takes a list of `dials_parser` instances and writes the cell
-    parameters to an excel file `cells.xlsx`.
-    """
-    d = {}
-    for i, p in enumerate(ps):
-        i += 1
-        d[i] = p.cell_as_dict()
-
-    import pandas as pd
-    df = pd.DataFrame(d).T
-    df = df["spgr a b c al be ga volume rotation_angle total_completeness file".split()]
-    if not os.path.exists(fn):
-        df.to_excel(fn)
-    else:
-        """To address that cells.xlsx does not overwrite"""
-        os.remove(fn)
-        df.to_excel(fn)
-
-    print(f"Wrote {i} cells to file {fn}")
-
-
-def cells_to_cellparm(ps):
-    """Takes a list of `dials_parser` instances and writes the cell
-    parameters to an instruction file `CELLPARM.INP` for the program
-    `cellparm`.
-    """
-    fn = "CELLPARM.INP"
-    # write cellparm input file
-    with open(fn, "w") as f:
-        for i, p in enumerate(ps):
-            i += 1
-            fn = p.filename
-            # cell = p.unit_cell
-            cell = p.d["raw_cell"]
-            ntot = p.d["total"]["ntot"]
-            print(f"! {i: 3d} from {fn}", file=f)
-            print("UNIT_CELL_CONSTANTS= {:10.2f}{:10.2f}{:10.2f}{:10.2f}{:10.2f}{:10.2f} WEIGHT= {ntot}".format(*cell, ntot=ntot), file=f)
-
-    print(f"Wrote file {fn}")
-
-
 def cells_to_yaml(ps, fn="cells.yaml"):
     import yaml
     ds = []
     for i, p in enumerate(ps):
         i += 1
         d = {}
-        d["directory"] = str(p.filename.parent)
-        d["number"] = i
-        d["unit_cell"] = p.d["cell"]
-        d["raw_unit_cell"] = p.d["raw_cell"]
-        d["space_group"] = p.d["spgr"]
-        d["weight"] = p.d["total"]["ntot"]
-        ds.append(d)
+        for crystal in p.d:
+            d["directory"] = crystal["fn"]
+            d["number"] = i
+            d["unit_cell"] = crystal["cell"]
+            d["space_group"] = crystal["spgr"]
+            d["indexed"] = crystal["indexed"]
+            d["percent"] = crystal["percent"]
+            ds.append(d)
 
     yaml.dump(ds, open(fn, "w"))
 
     print(f"Wrote {i} cells to file {fn}")
 
-
-def gather_DIALS_refl(ps, min_completeness=10.0, min_cchalf=90.0, gather=False):
-    """Takes a list of `dials_parser` instances and gathers the
-    corresponding relf files into the current directory.
-    The data source and numbering scheme is summarized in the file `filelist.txt`.
-    """
-    fn = "filelist.txt"
-
-    # gather DIALS_ascii and prepare filelist
-    n = 0
-    with open(fn, "w") as f:
-        for i, p in enumerate(ps):
-            i += 1
-
-            completeness = p.d["total"]["completeness"]
-            cchalf = p.d["total"]["cchalf"]
-
-            if cchalf < min_cchalf:
-                continue
-
-            if completeness < min_completeness:
-                continue
-
-            src = p.filename.with_name("DIALS_ASCII.HKL")
-            dst = f"{i:02d}_DIALS_ASCII.HKL"
-            if gather:
-                shutil.copy(src, dst)
-                ascii_name = dst
-            else:
-                ascii_name = src
-
-            dmax, dmin = p.d["res_range"]
-            print(f" {i: 3d} {ascii_name} {dmax:8.2f} {dmin:8.2f}  # {p.filename}", file=f)
-            n += 1
-
-    print(f"Wrote {n} entries to file {fn} (completeness > {min_completeness}%, CC(1/2) > {min_cchalf}%)")
-
-
-def lattice_to_space_group(lattice):
-    return { 'aP':  1, 'mP':  3, 'mC':  5, 'mI':  5,
-             'oP': 16, 'oC': 21, 'oI': 23, 'oF': 22,
-             'tP': 75, 'tI': 79, 'hP':143, 'hR':146,
-             'cP':195, 'cF':196, 'cI':197 }[lattice]
-
-
-def evaluate_symmetry(ps):
-    from collections import Counter
-
-    c_score = Counter()
-    c_freq = Counter()
-
-    for p in ps:
-        spgr = p.d["spgr"]
-        weight = p.d["total"]["ntot"]
-        d = spglib[spgr]
-        lattice = d["lattice"]
-        c_score[lattice] += weight
-        c_freq[lattice] += 1
-
-    print("\nMost likely lattice types:")
-    n = 1
-    for lattice, score in c_score.most_common(100):
-        count = c_freq[lattice]
-        spgr = lattice_to_space_group(lattice)
-        print(f"{n:3} Lattice type `{lattice}` (spgr: {spgr:3}) was found {count:3} times (score: {score:7})")
-        n += 1
-
-    return lattice_to_space_group(c_score.most_common()[0][0])
-
-def parse_xparm_for_uc(fn):
-    with open(fn, "r") as f:
-        f.readline()
-        f.readline()
-        f.readline()
-
-        line = f.readline().split()
-        uc = line[1:]
-        uc = [float(i) for i in uc]
-        return uc
-
-def cells_to_yaml_xparm(uc, fn="cells_xparm.yaml"):
-    import yaml
-    ds = []
-    for i, p in enumerate(uc):
-        i += 1
-        d = {}
-
-        d["directory"] = str(Path(p[1]).parent.resolve())
-
-        """get rotation range from dials.import.log"""
-        DIALSinp = Path(p[1]).parent / "DIALS.INP"
-        with open(DIALSinp, "r") as f:
-            for line in f:
-                if line.startswith("DATA_RANGE="):
-                    datarange = list(map(float, line.strip("\n").split()[1:]))
-                elif line.startswith("OSCILLATION_RANGE="):
-                    osc_angle = float(line.strip("\n").split()[1])
-
-        rr = osc_angle * (datarange[1] - datarange[0] + 1)
-
-        d["number"] = i
-        d["rotation_range"] = rr
-        d["raw_unit_cell"] = p[0]
-        d["space_group"] = "P1"
-        d["weight"] = 1
-        ds.append(d)
-
-    yaml.dump(ds, open(fn, "w"))
-
-    print(f"Wrote {i} cells to file {fn}")
 
 def main():
     import argparse
@@ -324,9 +173,21 @@ def main():
 
     parser.add_argument("-j", "--job",
                         action="store", type=str, dest="job",
-                        help="Type of ")
+                        help="Type of job performed")
 
-    parser.set_defaults(match=None, gather=False, job='index')
+    parser.add_argument("-sc", "--single_crystal",
+                        action="store", type=bool, dest="single_crystal",
+                        help="Only obtain datasets with only one lattice.")
+
+    parser.add_argument("-t_i", "--thresh_indexed",
+                        action="store", type=float, dest="thresh_indexed",
+                        help="Threshold based on indexed number of spots.")
+
+    parser.add_argument("-t_p", "--thresh_percent",
+                        action="store", type=float, dest="thresh_percent",
+                        help="Threshold based on percentage of indexed spots.")
+
+    parser.set_defaults(match=None, gather=False, job='index', single_crystal=True, thresh_percent=None, thresh_indexed=None)
 
     options = parser.parse_args()
 
@@ -334,9 +195,20 @@ def main():
     gather = options.gather
     args = options.args
     job = options.job
+    single_crystal = options.single_crystal
+    thresh_percent = options.thresh_percent
+    thresh_indexed = options.thresh_indexed
 
     if job == 'index':
-        fns = parse_args_for_fns(args, name="dials.index.log", match=match)
+        if args:
+            fns = []
+            for arg in args:
+                ds = yaml.load(open(arg, "r"), Loader=yaml.Loader)
+                for d in ds:
+                    fns.append(Path(d['directory']) / "dials.index.log")
+            fns = [fn.resolve() for fn in fns]
+        else:
+            fns = parse_args_for_fns(args, name="dials.index.log", match=match)
         dials_all = []
         records = []
         for fn in fns:
@@ -347,6 +219,15 @@ def main():
                 continue
             else:
                 if p and p.d:
+                    if single_crystal:
+                        if len(p.d) > 1:
+                            continue
+                    if thresh_indexed is not None:
+                        if p.d[0]['indexed'] < thresh_indexed:
+                            continue
+                    if thresh_percent is not None:
+                        if p.d[0]['percent'] < thresh_percent:
+                            continue
                     dials_all.append(p)
                     for crystal in p.d:
                         records.append(crystal)
@@ -355,10 +236,12 @@ def main():
             i += 1
             for info in p.cell_info(sequence=i):
                 print(info)
-            print(info)
 
         df = pd.DataFrame.from_dict(records)
         df.to_csv(CWD/'unit_cell.csv')
+
+        # cells_to_cellparm(xdsall)
+        cells_to_yaml(dials_all)
 
 if __name__ == '__main__':
     main()

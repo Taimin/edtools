@@ -256,8 +256,9 @@ def cluster_cell(cells: list,
                  use_radian: bool=False,
                  use_sine: bool=False):
     """Perform hierarchical cluster analysis on a list of cells. 
-
-    method: lcv, volume, euclidean
+    
+    method: complete, average, weighted, centroid, median, ward, single
+    metric: lcv, volume, euclidean
     distance: cutoff distance, if it is not given, pop up a dendrogram to
         interactively choose a cutoff distance
     use_radian: Use radian instead of degrees to downweight difference
@@ -364,9 +365,9 @@ def main():
                         choices="euclidean lcv volume".split(),
                         help="Metric for calculating the distance between items (see `scipy.cluster.hierarchy.linkage`)")
 
-    parser.add_argument("-l", "--use_bravais_lattice",
-                        action="store_false", dest="use_raw_cell",
-                        help="Use the bravais lattice (symmetry applied)")
+    parser.add_argument("-l", "--use_raw_cell",
+                        action="store_true", dest="use_raw_cell",
+                        help="Use the reduced cell or not")
 
     parser.add_argument("-r", "--use_radian_for_angles",
                         action="store_true", dest="use_radian_for_clustering",
@@ -375,18 +376,13 @@ def main():
     parser.add_argument("-s", "--use_sine_for_angles",
                         action="store_true", dest="use_sine_for_clustering",
                         help="Use sine for unit cell clustering (to disambiguousize the difference in angles)")
-    
-    #parser.add_argument("-w","--raw-cell",
-    #                    action="store_true", dest="raw_cell",
-    #                    help="Use the raw lattice (from IDXREF as opposed to the refined one from CORRECT) for unit cell finding and clustering")
-
+ 
     parser.set_defaults(binsize=0.5,
                         cluster=False,
                         distance=None,
                         method="average",
                         metric="euclidean",
-                        use_raw_cell=True,
-                        raw=False,
+                        use_raw_cell=False,
                         use_radian_for_clustering=False,
                         use_sine_for_clustering=False)
     
@@ -409,11 +405,15 @@ def main():
 
     ds = yaml.load(open(fn, "r"), Loader=yaml.Loader)
 
-    key = "raw_unit_cell" if use_raw_cell else "unit_cell"
-
-    cells = np.array([d[key] for d in ds])
+    cells = np.array([d['unit_cell'] for d in ds])
     cells = put_in_order(cells)
-    weights = np.array([d["weight"] for d in ds])
+    if use_raw_cell:
+        # transform cell into reduced cell
+        pass
+    try:
+        weights = np.array([d["indexed"] for d in ds])
+    except:
+        weights = np.array([d["weight"] for d in ds])
 
     if cluster:
         clusters = cluster_cell(cells, distance=distance, method=method, metric=metric, use_radian=use_radian, use_sine=use_sine)

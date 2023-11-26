@@ -4,6 +4,7 @@ import shutil
 import sys, os
 import traceback
 from pathlib import Path
+import yaml
 import concurrent.futures
 from .utils import parse_args_for_fns
 
@@ -153,7 +154,25 @@ def main():
     args = options.args
     restrain = options.restrain
 
-    fns = parse_args_for_fns(args, name="dials_process.bat", match=match)
+    if args:
+        fns = []
+        for arg in args:
+            if arg.split('.')[-1] == "yaml":
+                ds = yaml.load(open(arg, "r"), Loader=yaml.Loader)
+                for d in ds:
+                    fns.append(Path(d['directory']) / "dials_process.bat")
+            elif arg.split('.')[-1] == "lst":
+                with open(arg, 'r') as f:
+                    lines = f.readlines()
+                    for line in lines:
+                        line = line.split('/')[-1].split('_')
+                        folder = ['_'.join(line[0:3]), '_'.join(line[3:5])]
+                        folder = '/'.join(folder)
+                        file = Path('./' + folder) / "dials_process.bat"
+                        fns.append(file)
+        fns = [fn.resolve() for fn in fns]
+    else:
+        fns = parse_args_for_fns(args, name="dials_process.bat", match=match)
 
     if unprocessed_only:
         fns = [fn for fn in fns if not fn.with_name("dials.index.log").exists()]

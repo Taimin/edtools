@@ -181,13 +181,13 @@ def main():
 
     parser.add_argument("-t_i", "--thresh_indexed",
                         action="store", type=float, dest="thresh_indexed",
-                        help="Threshold based on indexed number of spots.")
+                        help="Threshold based on indexed number of spots. Remove low resolution datasets.")
 
     parser.add_argument("-t_p", "--thresh_percent",
                         action="store", type=float, dest="thresh_percent",
                         help="Threshold based on percentage of indexed spots.")
 
-    parser.set_defaults(match=None, gather=False, job='index', single_crystal=True, thresh_percent=None, thresh_indexed=None)
+    parser.set_defaults(match=None, gather=False, job='index', single_crystal=False, thresh_percent=None, thresh_indexed=None)
 
     options = parser.parse_args()
 
@@ -217,20 +217,32 @@ def main():
             except UnboundLocalError as e:
                 print(e)
                 continue
-            else:
-                if p and p.d:
-                    if single_crystal:
-                        if len(p.d) > 1:
-                            continue
+            if p and p.d:
+                if single_crystal:
+                    if len(p.d) > 1:
+                        continue
+                continue_flag = 0
+                # Deal with the multiple crystals
+                for i in range(len(p.d)):
                     if thresh_indexed is not None:
-                        if p.d[0]['indexed'] < thresh_indexed:
-                            continue
+                        if i == 0:
+                            if p.d[i]['indexed'] < thresh_indexed:
+                                continue
+                        else:
+                            if p.d[i]['indexed'] - p.d[i-1]['indexed'] < thresh_indexed:
+                                continue
                     if thresh_percent is not None:
-                        if p.d[0]['percent'] < thresh_percent:
-                            continue
-                    dials_all.append(p)
-                    for crystal in p.d:
-                        records.append(crystal)
+                        if i == 0:
+                            if p.d[i]['percent'] < thresh_percent:
+                                continue_flag = 1
+                        else:
+                            if p.d[i]['percent'] - p.d[i-1]['percent'] < thresh_percent:
+                                continue_flag = 1
+                if continue_flag == 1:
+                    continue
+                dials_all.append(p)
+                for crystal in p.d:
+                    records.append(crystal)
 
         for i, p in enumerate(dials_all):
             i += 1

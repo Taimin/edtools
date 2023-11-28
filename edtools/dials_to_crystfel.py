@@ -42,7 +42,8 @@ def lattice_type_sym(lattice, unique_axis='c'):
         return 'invalid'
 
 def process_data(index, fn, split, write_h5, lock, files, d_min, reindex=False, refine=False, integrate=False, \
-                integrate_sweep=False, scale_sweep=False, file_exists=False, space_group=None, write_sol=False, merge=False):
+                integrate_sweep=False, scale_sweep=False, file_exists=False, space_group=None, write_sol=False, merge=False,
+                single_crystal=True):
     try:
         print(f'Start processing crystal number {index}.')
         drc = fn.parent/'SMV'
@@ -114,9 +115,10 @@ def process_data(index, fn, split, write_h5, lock, files, d_min, reindex=False, 
         imgs = []
         frame_list = []
         event_list = []
-        if len(crystals) > len(img_list):
-            print(f'There are more than one crystal under the beam for crystal number {index}')
-            return -1
+        if single_crystal:
+            if len(crystals) > len(img_list):
+                print(f'There are more than one crystal under the beam for crystal number {index}')
+                return -1
 
         if integrate_sweep:
             if refine:
@@ -220,18 +222,19 @@ def process_data(index, fn, split, write_h5, lock, files, d_min, reindex=False, 
                                 sp_num = num
                         lattice = spglib[sp_num]['lattice']
                         sym = lattice_type_sym(lattice)
-                        print(f"./h5/{h5_filename} entry//{index} {' '.join(reciprocal_sp_matrix)} 0 0 {sym}", file=f)
+                        number = index % len(img_list)
+                        print(f"./h5/{h5_filename} entry//{number} {' '.join(reciprocal_sp_matrix)} 0 0 {sym}", file=f)
     except:
         traceback.print_exc()
 
 def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refine=False, merge=False, integrate=False, \
-                integrate_sweep=False, scale_sweep=False, file_exists=False, space_group=None, write_sol=False):
+                integrate_sweep=False, scale_sweep=False, file_exists=False, space_group=None, write_sol=False, single_crystal=True):
     futures = []
     FILES = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         for index, fn in enumerate(fns):
             futures.append(executor.submit(process_data, index, fn, split, write_h5, lock, FILES, d_min, reindex, refine, integrate,\
-                                         integrate_sweep, scale_sweep, file_exists, space_group, write_sol, merge))
+                                         integrate_sweep, scale_sweep, file_exists, space_group, write_sol, merge, single_crystal))
     concurrent.futures.wait(futures, return_when=concurrent.futures.ALL_COMPLETED)
 
     if merge:
@@ -352,8 +355,12 @@ def main():
                         action="store", type=bool, dest="write_sol",
                         help="Write the sol file.")
 
+    parser.add_argument("-sc", "--single_crystal",
+                        action="store", type=bool, dest="single_crystal",
+                        help="Only use single crystals.")
+
     parser.set_defaults(split=False, write_h5=False, reindex=False, refine=False, d_min=0.8, thresh=0.6, 
-                        input_file=False, space_group=None, write_sol=False)
+                        input_file=False, space_group=None, write_sol=False, single_crystal=True)
 
     options = parser.parse_args()
     args = options.args
@@ -371,6 +378,7 @@ def main():
     space_group = options.space_group
     write_sol = options.write_sol
     scale_sweep = options.scale_sweep
+    single_crystal = options.single_crystal
 
     if args:
         fns = []
@@ -402,5 +410,5 @@ def main():
         pass
     lock = threading.Lock()
     run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex, refine, merge, integrate, integrate_sweep, \
-                scale_sweep, input_file, space_group, write_sol)
+                scale_sweep, input_file, space_group, write_sol, single_crystal)
     print(f"\033[KUpdated {len(fns)} files")

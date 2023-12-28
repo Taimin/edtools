@@ -37,7 +37,31 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
         img_list.append((img_name.name.split('.')[0], img))
 
     center_x_first = None
-    pixel_num = 16
+    pixel_num = 32
+
+    center_avg = []
+    with open(fn.parent.parent / 'beam_centers.txt', 'r') as f:
+        lines = f.readlines()
+        for line in lines:
+            pos = [float(x) for x in line.split()]
+            if not np.isnan(pos[0]):
+                center_avg.append(pos)
+    center_avg = np.array(center_avg)
+    center_x, center_y = center_avg.mean(axis=0)
+
+    for i, (img_name, img) in enumerate(img_list, 1): 
+        try:
+            if center:
+                if center_x_first is None:
+                    template = img[int(round(center_x-pixel_num)):int(round(center_x+pixel_num)), 
+                            int(round(center_y-pixel_num)):int(round(center_y+pixel_num))].copy()
+                    if template.mean() < 500:
+                        continue
+                    center_x_first, center_y_first = find_beam_center(template, sigma=5)
+                    update_cent_x, update_cent_y = center_x-pixel_num+center_x_first, center_y-pixel_num+center_y_first
+        except:
+            traceback.print_exc()
+            continue
 
     # TODO: The interpolation will blur out the diffraction pattern or make some artifacts...
     # Consider change to fourier shift
@@ -46,23 +70,16 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
             img_name = float(img_name)
             img_name = int(img_name / select_n)
             img_name = f'{img_name:05d}'
+            if center_x_first is None:
+                return -1
             try:
-                if i == 1:
-                    center_x, center_y = find_beam_center(img)
                 if center:
-                    if i == 1 or center_x_first is None:
-                        center_x, center_y = find_beam_center(img)
-                        template = img[int(round(center_x-pixel_num)):int(round(center_x+pixel_num)), 
-                                int(round(center_y-pixel_num)):int(round(center_y+pixel_num))].copy()
-                        center_x_first, center_y_first = find_beam_center(template, sigma=5)
-                        update_cent_x, update_cent_y = center_x-pixel_num+center_x_first, center_y-pixel_num+center_y_first
-                    else:
-                        center_pos  = find_beam_center(img[int(round(center_x-pixel_num)):int(round(center_x+pixel_num)), 
-                                                    int(round(center_y-pixel_num)):int(round(center_y+pixel_num))], sigma=5)
-                        shift = (center_x_first-center_pos[0], center_y_first-center_pos[1])
-                        #shift, error, phasediff = phase_cross_correlation(template, center_area, upsample_factor=10)
-                        print(shift)
-                        img = ndimage.shift(img, shift, order=1, output=np.uint16, mode='nearest')
+                    center_pos  = find_beam_center(img[int(round(center_x-pixel_num)):int(round(center_x+pixel_num)), 
+                                                int(round(center_y-pixel_num)):int(round(center_y+pixel_num))], sigma=5)
+                    shift = (center_x_first-center_pos[0], center_y_first-center_pos[1])
+                    #shift, error, phasediff = phase_cross_correlation(template, center_area, upsample_factor=10)
+                    print(shift)
+                    img = ndimage.shift(img, shift, order=1, output=np.uint16, mode='nearest')
             except:
                 traceback.print_exc()
                 continue

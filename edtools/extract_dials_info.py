@@ -227,10 +227,10 @@ def main():
                     if thresh_indexed is not None:
                         if i == 0:
                             if p.d[i]['indexed'] < thresh_indexed:
-                                continue
+                                continue_flag = 1
                         else:
                             if p.d[i]['indexed'] - p.d[i-1]['indexed'] < thresh_indexed:
-                                continue
+                                continue_flag = 1
                     if thresh_percent is not None:
                         if i == 0:
                             if p.d[i]['percent'] < thresh_percent:

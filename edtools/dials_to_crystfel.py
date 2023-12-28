@@ -228,7 +228,8 @@ def process_data(index, fn, split, write_h5, lock, files, d_min, reindex=False, 
         traceback.print_exc()
 
 def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refine=False, merge=False, integrate=False, \
-                integrate_sweep=False, scale_sweep=False, file_exists=False, space_group=None, write_sol=False, single_crystal=True):
+                integrate_sweep=False, scale_sweep=False, file_exists=False, space_group=None, write_sol=False, single_crystal=True,
+                reference=None):
     futures = []
     FILES = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
@@ -280,7 +281,10 @@ def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refin
         except Exception as e:
             print("ERROR in subprocess call:", e)
 
-        cmd = f'dials.export.bat DataFiles/scaled.expt DataFiles/scaled.refl format=shelx partiality_threshold={thresh}'
+        if reference is None:
+            cmd = f'dials.export.bat DataFiles/scaled.expt DataFiles/scaled.refl format=shelx partiality_threshold={thresh}'
+        else:
+            cmd = f'dials.export.bat DataFiles/scaled_batch1.expt DataFiles/scaled_batch1.refl format=shelx partiality_threshold={thresh}'
         try:
             p = subprocess.Popen(cmd, cwd=CWD)
             p.communicate()
@@ -359,8 +363,12 @@ def main():
                         action="store", type=bool, dest="single_crystal",
                         help="Only use single crystals.")
 
+    parser.add_argument("-ref", "--reference",
+                        action="store", type=str, dest="reference",
+                        help="Reference during scaling.")
+
     parser.set_defaults(split=False, write_h5=False, reindex=False, refine=False, d_min=0.8, thresh=0.6, 
-                        input_file=False, space_group=None, write_sol=False, single_crystal=True)
+                        input_file=False, space_group=None, write_sol=False, single_crystal=True, reference=None)
 
     options = parser.parse_args()
     args = options.args
@@ -379,6 +387,7 @@ def main():
     write_sol = options.write_sol
     scale_sweep = options.scale_sweep
     single_crystal = options.single_crystal
+    reference = options.reference
 
     if args:
         fns = []
@@ -398,7 +407,7 @@ def main():
                         fns.append(file)
         fns = [fn.resolve() for fn in fns]
     else:
-        fns = parse_args_for_fns(fns, name="summary.txt", match=match)
+        fns = parse_args_for_fns(args, name="summary.txt", match=match)
 
     (CWD/'h5').mkdir(parents=True, exist_ok=True)
 
@@ -410,5 +419,5 @@ def main():
         pass
     lock = threading.Lock()
     run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex, refine, merge, integrate, integrate_sweep, \
-                scale_sweep, input_file, space_group, write_sol, single_crystal)
+                scale_sweep, input_file, space_group, write_sol, single_crystal, reference)
     print(f"\033[KUpdated {len(fns)} files")

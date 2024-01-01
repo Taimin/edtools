@@ -237,11 +237,21 @@ def cells_to_cellparm(ps):
     print(f"Wrote file {fn}")
 
 
-def cells_to_yaml(ps, fn="cells.yaml"):
+def cells_to_yaml(ps, fn="cells.yaml", min_completeness=10.0, min_cchalf=90.0):
     import yaml
     ds = []
     for i, p in enumerate(ps):
         i += 1
+        completeness = p.d["total"]["completeness"]
+        cchalf = p.d["total"]["cchalf"]
+        if min_cchalf is not None:
+            if cchalf < min_cchalf:
+                continue
+
+        if min_completeness is not None:
+            if completeness < min_completeness:
+                continue
+
         d = {}
         d["directory"] = str(p.filename.parent)
         d["number"] = i
@@ -272,11 +282,13 @@ def gather_xds_ascii(ps, min_completeness=10.0, min_cchalf=90.0, gather=False):
             completeness = p.d["total"]["completeness"]
             cchalf = p.d["total"]["cchalf"]
 
-            if cchalf < min_cchalf:
-                continue
+            if min_cchalf is not None:
+                if cchalf < min_cchalf:
+                    continue
 
-            if completeness < min_completeness:
-                continue
+            if min_completeness is not None:
+                if completeness < min_completeness:
+                    continue
 
             src = p.filename.with_name("XDS_ASCII.HKL")
             dst = f"{i:02d}_XDS_ASCII.HKL"
@@ -391,6 +403,14 @@ def main():
                         action="store_true", dest="xparm",
                         help="extract unit cell info from XPARM.XDS instead of CORRECT.LP. NOTE!! Only aimed for first step clustering.")
 
+    parser.add_argument("-min_c", "--min_completeness",
+                        action="store", type=float, dest="min_completeness",
+                        help="minimum completeness.")
+
+    parser.add_argument("-min_cc", "--min_cchalf",
+                        action="store", type=float, dest="min_cchalf",
+                        help="minimum CC1/2.")
+
     parser.set_defaults(match=None)
 
     options = parser.parse_args()
@@ -399,6 +419,8 @@ def main():
     gather = options.gather
     xparm = options.xparm
     args = options.args
+    min_completeness = options.min_completeness
+    min_cchalf = options.min_cchalf
 
     if xparm:
         fns = parse_args_for_fns(args, name="XPARM.XDS", match=match)
@@ -436,9 +458,9 @@ def main():
 
         cells_to_excel(xdsall)
         # cells_to_cellparm(xdsall)
-        cells_to_yaml(xdsall)
+        cells_to_yaml(xdsall, min_completeness=min_completeness, min_cchalf=min_cchalf)
 
-        gather_xds_ascii(xdsall, gather=gather)
+        gather_xds_ascii(xdsall, gather=gather, min_completeness=min_completeness, min_cchalf=min_cchalf)
 
         evaluate_symmetry(xdsall)
         print("\n ** the score corresponds to the total number of indexed reflections.")

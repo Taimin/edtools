@@ -4,6 +4,7 @@ import scipy.ndimage as ndimage
 from skimage.registration import phase_cross_correlation
 from pathlib import Path
 import shutil
+import yaml
 
 from instamatic import config
 from instamatic.formats import read_image
@@ -70,8 +71,10 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
             img_name = float(img_name)
             img_name = int(img_name / select_n)
             img_name = f'{img_name:05d}'
-            if center_x_first is None:
-                return -1
+            if center:
+                if center_x_first is None:
+                    print('No initial center.')
+                    return -1
             try:
                 if center:
                     center_pos  = find_beam_center(img[int(round(center_x-pixel_num)):int(round(center_x+pixel_num)), 
@@ -311,7 +314,7 @@ def main():
                         select_n=1)
 
     options = parser.parse_args()
-    fns = options.args
+    args = options.args
     write_smv = options.write_smv
     write_tif = options.write_tif
     integrate = options.integrate
@@ -331,7 +334,15 @@ def main():
     ellip_corr = options.ellip_corr
     select_n = options.select_n
 
-    fns = parse_args_for_fns(fns, name="summary.txt", match=match)
+    if args:
+        fns = []
+        for arg in args:
+            ds = yaml.load(open(arg, "r"), Loader=yaml.Loader)
+            for d in ds:
+                fns.append(Path(d['directory']).parent / "summary.txt")
+        fns = [fn.resolve() for fn in fns]
+    else:
+        fns = parse_args_for_fns(args, name="summary.txt", match=match)
     
     for fn in fns:
         lines = open(fn, "r", encoding = 'cp1252').readlines()

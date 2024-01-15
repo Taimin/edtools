@@ -30,7 +30,7 @@ def connect(payload: str) -> None:
     Parameters
     ----------
     payload : str
-        Directory where XDS should be run.
+        Directory where DIALS should be run.
     """
     payload = str(payload).encode()
 

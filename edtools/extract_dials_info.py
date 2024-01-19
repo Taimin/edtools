@@ -85,9 +85,6 @@ class dials_parser:
         
         return d_list
 
-    def print_filename(self):
-        print("#", self.filename)
-
     def cell_info(self, sequence=0):
         d = self.d
         i = sequence
@@ -131,7 +128,6 @@ class dials_parser:
         return s
 
 def cells_to_yaml(ps, fn="cells.yaml"):
-    import yaml
     ds = []
     for i, p in enumerate(ps):
         i += 1
@@ -211,6 +207,7 @@ def main():
             fns = parse_args_for_fns(args, name="dials.index.log", match=match)
         dials_all = []
         records = []
+        cnt = 1
         for fn in fns:
             try:
                 p = dials_parser(fn, job=job)
@@ -224,6 +221,7 @@ def main():
                 continue_flag = 0
                 # Deal with the multiple crystals
                 for i in range(len(p.d)):
+                    crystal = {}
                     if thresh_indexed is not None:
                         if i == 0:
                             if p.d[i]['indexed'] < thresh_indexed:
@@ -238,22 +236,34 @@ def main():
                         else:
                             if p.d[i]['percent'] - p.d[i-1]['percent'] < thresh_percent:
                                 continue_flag = 1
-                if continue_flag == 1:
-                    continue
-                dials_all.append(p)
-                for crystal in p.d:
-                    records.append(crystal)
+                    if continue_flag == 1:
+                        continue
+                    crystal["directory"] = p.d[i]["fn"]
+                    crystal["number"] = cnt
+                    crystal["unit_cell"] = p.d[i]["cell"]
+                    crystal["space_group"] = p.d[i]["spgr"]
+                    crystal["indexed"] = p.d[i]["indexed"]
+                    crystal["percent"] = p.d[i]["percent"]
+                    dials_all.append(crystal)
+                    cnt += 1 
+                    records.append(p.d[i])
 
-        for i, p in enumerate(dials_all):
+        for i, crystal in enumerate(records):
             i += 1
-            for info in p.cell_info(sequence=i):
-                print(info)
+            fn = Path(crystal["fn"])
+            model_num = crystal["model_num"]
+            s = f"{i: 4d}: {fn.parents[0]} # Time: {datetime.fromtimestamp((os.path.getmtime(fn))).strftime('%Y-%m-%d %H:%M:%S')} #\n"
+            s += "Spgr {} - Cell {:10.2f}{:10.2f}{:10.2f}{:10.2f}{:10.2f}{:10.2f} - Vol {:10.2f} Indexed: {} Unindexed: {}\n"\
+                    .format(crystal["spgr"], *crystal["cell"], crystal["volume"], crystal["indexed"], crystal["unindexed"])
+            s += f"# Model {model_num} # Indexed: {crystal['indexed']} # Unindexed: {crystal['unindexed']} \
+                    # Percentage: {crystal['percent']:.1%} #\n"
+            print(s)
 
         df = pd.DataFrame.from_dict(records)
         df.to_csv(CWD/'unit_cell.csv')
 
         # cells_to_cellparm(xdsall)
-        cells_to_yaml(dials_all)
+        yaml.dump(dials_all, open('cells.yaml', "w"))
 
 if __name__ == '__main__':
     main()

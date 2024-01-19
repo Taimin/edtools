@@ -207,7 +207,7 @@ def main():
             fns = parse_args_for_fns(args, name="dials.index.log", match=match)
         dials_all = []
         records = []
-        cnt = 1
+        cnt = 0
         for fn in fns:
             try:
                 p = dials_parser(fn, job=job)
@@ -218,10 +218,11 @@ def main():
                 if single_crystal:
                     if len(p.d) > 1:
                         continue
-                continue_flag = 0
                 # Deal with the multiple crystals
+                cnt_flag = 0
                 for i in range(len(p.d)):
                     crystal = {}
+                    continue_flag = 0
                     if thresh_indexed is not None:
                         if i == 0:
                             if p.d[i]['indexed'] < thresh_indexed:
@@ -236,17 +237,26 @@ def main():
                         else:
                             if p.d[i]['percent'] - p.d[i-1]['percent'] < thresh_percent:
                                 continue_flag = 1
+
                     if continue_flag == 1:
                         continue
+
                     crystal["directory"] = p.d[i]["fn"]
                     crystal["number"] = cnt
                     crystal["unit_cell"] = p.d[i]["cell"]
                     crystal["space_group"] = p.d[i]["spgr"]
-                    crystal["indexed"] = p.d[i]["indexed"]
-                    crystal["percent"] = p.d[i]["percent"]
-                    dials_all.append(crystal)
-                    cnt += 1 
+                    if i == 0:
+                        crystal["indexed"] = p.d[i]["indexed"]
+                        crystal["percent"] = p.d[i]["percent"]
+                    else:
+                        crystal["indexed"] = p.d[i]["indexed"] - p.d[i-1]['indexed']
+                        crystal["percent"] = p.d[i]["percent"] - p.d[i-1]['percent']
+                    dials_all.append(crystal) 
                     records.append(p.d[i])
+                    cnt_flag = 1
+
+                if cnt_flag == 1:
+                    cnt += 1
 
         for i, crystal in enumerate(records):
             i += 1

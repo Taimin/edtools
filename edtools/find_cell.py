@@ -8,24 +8,46 @@ import yaml
 from .utils import volume
 from typing import Tuple
 
+def unify(cell):
+    if cell[3] > 90:
+        cell[3] = 180 - cell[3]
+    if cell[4] > 90:
+        cell[4] = 180 - cell[4]
+    if cell[5] > 90:
+        cell[5] = 180 - cell[5]
+
 def to_niggli_cell(cell):
     L = from_uc_to_lattice_matrix(cell)
     L = niggli_reduce_3d(L)
     cell = from_lattice_matrix_to_uc(L)
+    return cell
 
 def from_uc_to_lattice_matrix(cell):
-    pass
+    lattice = np.zeros((3, 3))
+    cell[3] *= np.pi/180
+    cell[4] *= np.pi/180
+    cell[5] *= np.pi/180
+    lattice[0, 0] = cell[0]
+    lattice[1, 0] = cell[1] * np.cos(cell[5])
+    lattice[2, 0] = cell[2] * np.cos(cell[4])
+    lattice[1, 1] = cell[1] * np.sin(cell[5])
+    lattice[1, 2] = -cell[2] * (np.cos(cell[4]) * np.cos(cell[5]) - np.cos(cell[3])) / np.sin(cell[5])
+    lattice[2, 2] = cell[2]
+    cell[3] /= np.pi/180
+    cell[4] /= np.pi/180
+    cell[5] /= np.pi/180
+    return lattice
 
 def from_lattice_matrix_to_uc(lattice):
     cell = [0, 0, 0, 0, 0, 0]
     cell[0] = lattice[0, 0]
     cell[2] = lattice[2, 2]
     try:
-        gamma = np.arctan(lattice[1, 1] / lattce[1, 0])
-        if gamma < 0 or np.abs(gamma) < np.pi/4:
-            gamma = gamma + np.pi
+        gamma = np.arctan(lattice[1, 1] / lattice[1, 0])
     except ZeroDivisionError:
         gamma = np.pi
+    if gamma < 0:
+        gamma = gamma + np.pi
     cell[5] = np.rad2deg(gamma)
     cell[1] = lattice[1, 1] / np.sin(gamma)
     beta = np.arccos(lattice[2, 0] / lattice[2, 2])
@@ -678,7 +700,7 @@ def main():
         # transform cell into reduced cell
         raw_cells = []
         for i in range(0, len(cells)):
-            raw_cell = to_niggli_cell(cells[i, :])
+            raw_cell = unify(cells[i, :])
             raw_cells.append(raw_cell)
     try:
         weights = np.array([d["indexed"] for d in ds])

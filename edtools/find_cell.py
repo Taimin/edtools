@@ -9,14 +9,11 @@ from .utils import volume
 from typing import Tuple
 
 def unify(cell):
-    if cell[3] > 90:
-        cell[3] = 180 - cell[3]
-    if cell[4] > 90:
-        cell[4] = 180 - cell[4]
-    if cell[5] > 90:
-        cell[5] = 180 - cell[5]
+    for i in range(3,6):
+        if cell[i] > 90:
+            cell[i] = 180 - cell[i]
 
-def to_niggli_cell(cell):
+def to_niggli_cell(cell, space_group):
     L = from_uc_to_lattice_matrix(cell)
     L = niggli_reduce_3d(L)
     cell = from_lattice_matrix_to_uc(L)

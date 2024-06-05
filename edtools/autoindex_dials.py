@@ -81,7 +81,7 @@ def parse_dials_index(path: str, sequence: int=0) -> None:
             if msg is not None:
                 print(msg, file=f)
 
-def process_data(i, fn, job, restrain, use_server):
+def process_data(i, fn, job, restrain, find_spot, use_server):
     drc = fn.parent
     if use_server:
         connect(drc)
@@ -92,6 +92,12 @@ def process_data(i, fn, job, restrain, use_server):
         else:
             with open(drc/'restrain.phil', 'w') as f:
                 print('indexing {', file=f)
+                print('}', file=f)
+        if find_spot:
+            shutil.copy(str(CWD/'find_spot.phil'), str(drc/'find_spot.phil'))
+        else:
+            with open(drc/'find_spot.phil', 'w') as f:
+                print('spotfinder {', file=f)
                 print('}', file=f)
         cmd = str(drc/"dials_process.bat")
         try:
@@ -136,13 +142,18 @@ def main():
 
     parser.add_argument("-r", "--restrain",
                         action="store", type=bool, dest="restrain",
-                        help="If True, copy the restrain.phil file to each dials directory")
+                        help="If True, copy the restrain.phil file for indexing to each dials directory")
+
+    parser.add_argument("-f", "--find_spot",
+                        action="store", type=bool, dest="find_spot",
+                        help="If True, copy the find_spot.phil file to each dials directory")
 
     parser.set_defaults(use_server=False,
                         match=None,
                         unprocessed_only=False,
                         job='index',
                         restrain=False,
+                        find_spot=False,
                         )
 
     options = parser.parse_args()
@@ -153,6 +164,7 @@ def main():
     job = options.job
     args = options.args
     restrain = options.restrain
+    find_spot = options.find_spot
 
     if args:
         fns = []
@@ -189,7 +201,7 @@ def main():
     futures = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         for i, fn in enumerate(fns):
-            futures.append(executor.submit(process_data, i, fn, job, restrain, use_server))
+            futures.append(executor.submit(process_data, i, fn, job, restrain, find_spot, use_server))
     concurrent.futures.wait(futures, return_when=concurrent.futures.ALL_COMPLETED)
         
 

@@ -9,7 +9,7 @@ import yaml
 from instamatic import config
 from instamatic.formats import read_image
 from instamatic.formats import write_adsc
-from instamatic.formats import write_tiff
+from instamatic.formats import write_tiff, write_mrc
 from instamatic.processing import apply_stretch_correction
 from instamatic.processing.ImgConversion import rotation_axis_to_xyz
 from instamatic.tools import find_beam_center, find_subranges
@@ -20,7 +20,7 @@ import traceback
 
 
 def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, osc_angle, name, axis,
-             write_smv=False, write_tif=False, integrate=False, center=False, stretch=False, refine=False, 
+             write_smv=False, write_tif=False, write_mrcc=False, integrate=False, center=False, stretch=False, refine=False, 
              symmetry=False, scale=False, report=False, export=False, gain=1, refine_center=False,
              ellip_corr=False, select_n=1):
     if fn.exists():
@@ -29,6 +29,9 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
     mrc_folder = fn.parent.parent / 'RED'
     smv_folder = fn.parent
     tiff_folder = fn.parent.parent / 'tiff'
+    centered_mrc_folder = fn.parent.parent / 'centered'
+    tiff_folder.mkdir(exist_ok=True)
+    centered_mrc_folder.mkdir(exist_ok=True)
     img_name_list = mrc_folder.glob('*.mrc')
     img_list = []
     distance = (1 / wavelength) * (physical_pixelsize / pixelsize)
@@ -38,7 +41,7 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
         img_list.append((img_name.name.split('.')[0], img))
 
     center_x_first = None
-    pixel_num = 32
+    pixel_num = 64
 
     center_avg = []
     with open(fn.parent.parent / 'beam_centers.txt', 'r') as f:
@@ -136,6 +139,10 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
                 header = {}
                 write_tiff(tiff_folder/(img_name+'.tiff'), img, header)
 
+            if write_mrcc:
+                header = {}
+                write_mrc(centered_mrc_folder/(img_name+'.mrc'), img[::-1])
+
     if select_n == 1:
         img_name_list = (smv_folder/'data').glob('*.img')
     elif select_n > 1:
@@ -169,7 +176,7 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
                 print(f'call dials.import template=./data/#####.img %rotation_axis% lookup.dx=dx.pickle lookup.dy=dy.pickle panel.gain={gain}', file=f)
             else:
                 print(f'call dials.import template=./data_{select_n}/#####.img %rotation_axis% lookup.dx=dx.pickle lookup.dy=dy.pickle panel.gain={gain}', file=f)
-        print(f'call dials.find_spots imported.expt %scan_range% nproc=2', file=f)
+        print(f'call dials.find_spots imported.expt %scan_range% nproc=2 find_spot.phil', file=f)
         if refine_center:
             print(f'call dials.search_beam_position imported.expt strong.refl', file=f)
             print(f'call dials.index optimised.expt strong.refl restrain.phil nproc=2', file=f)
@@ -248,6 +255,10 @@ def main():
                         action="store", type=bool, dest="write_tif",
                         help="Write Tiffs")
 
+    parser.add_argument("-w_m", "--write_mrc",
+                        action="store", type=bool, dest="write_mrc",
+                        help="Write MRCs")
+
     parser.add_argument("-cent", "--center",
                         action="store", type=bool, dest="center",
                         help="Center ED patterns")
@@ -308,7 +319,7 @@ def main():
                         action="store", type=int, dest="select_n",
                         help="Select 1 frame in every n frames.")
 
-    parser.set_defaults(write_smv=False, write_tif=False, integrate=False, center=False, stretch=False, refine=False,
+    parser.set_defaults(write_smv=False, write_tif=False, write_mrc=False, integrate=False, center=False, stretch=False, refine=False,
                         symmetry=False, scale=False, report=False, export=False,
                         name='ADSC', skip=None, include_frames=None, gain=1, refine_center=False, ellip_corr=None,
                         select_n=1)
@@ -317,6 +328,7 @@ def main():
     args = options.args
     write_smv = options.write_smv
     write_tif = options.write_tif
+    write_mrc = options.write_mrc
     integrate = options.integrate
     center = options.center
     stretch = options.stretch
@@ -371,9 +383,45 @@ def main():
         print("\033[K", fn, end='\r')  # "\033[K" clears line
         update_dials(fn.parent/'SMV'/'dials_process.bat', wavelength, physical_pixelsize, 
                      pixelsize, exposure, phi, osc_angle, name, axis,
-                     write_smv=write_smv, write_tif=write_tif, integrate=integrate, center=center, stretch=stretch, refine=refine,
+                     write_smv=write_smv, write_tif=write_tif, write_mrcc=write_mrc, integrate=integrate, center=center, stretch=stretch, refine=refine,
                      symmetry=symmetry, scale=scale, report=report, export=export, gain=gain, refine_center=refine_center,
                      ellip_corr=ellip_corr, select_n=select_n)
+
+    with open('restrain.phil', 'w') as f:
+        print('refinement {', file=f)
+        print('  parameterisation {', file=f)
+        print('      detector {', file=f)
+        print('        fix = distance', file=f)
+        print('      }', file=f)
+        print('    }', file=f)
+        print('  }', file=f)
+        print('  indexing {', file=f)
+        print('    refinement_protocol {', file=f)
+        print('      n_macro_cycles = 2', file=f)
+        print('    }', file=f)
+        print('    multiple_lattice_search {', file=f)
+        print('      max_lattices = 2', file=f)
+        print('    }', file=f)
+        print('    known_symmetry {', file=f)
+        print('      space_group = None', file=f)
+        print('      unit_cell = None', file=f)
+        print('      relative_length_tolerance = 0.1', file=f)
+        print('      absolute_angle_tolerance = 2', file=f)
+        print('      max_delta = 5', file=f)
+        print('    }', file=f)
+        print('  }''', file=f)
+
+    with open('find_spot.phil', 'w') as f:
+        print('spotfinder {', file=f)
+        print('  threshold {', file=f)
+        print('    algorithm = *dispersion dispersion_extended radial_profile', file=f)
+        print('    dispersion {', file=f)
+        print('      gain = 1', file=f)
+        print('      sigma_strong = 6', file=f)
+        print('      global_threshold = 1', file=f)
+        print('    }', file=f)
+        print('  }', file=f)
+        print('}', file=f)
 
     print(f"\033[KUpdated {len(fns)} files")
 

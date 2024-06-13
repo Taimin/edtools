@@ -43,7 +43,7 @@ def lattice_type_sym(lattice, unique_axis='c'):
 
 def process_data(index, fn, split, write_h5, lock, files, d_min, reindex=False, refine=False, integrate=False, \
                 integrate_sweep=False, scale_sweep=False, file_exists=False, space_group=None, write_sol=False, merge=False,
-                single_crystal=True):
+                single_crystal=True, gain=1):
     try:
         print(f'Start processing crystal number {index}.')
         drc = fn.parent/'SMV'
@@ -83,16 +83,16 @@ def process_data(index, fn, split, write_h5, lock, files, d_min, reindex=False, 
             print(f'Start split {fn}')
             if refine:
                 if (drc / 'refined.expt').is_file():
-                    cmd = 'dials.sequence_to_stills.bat refined.expt refined.refl'
+                    cmd = f'dials.sequence_to_stills.bat refined.expt refined.refl detector.gain={gain}'
                 else:
-                    cmd = 'dials.sequence_to_stills.bat indexed.expt indexed.refl'
+                    cmd = f'dials.sequence_to_stills.bat indexed.expt indexed.refl detector.gain={gain}'
             elif reindex:
                 if (drc / 'reindexed.expt').is_file():
-                    cmd = 'dials.sequence_to_stills.bat reindexed.expt reindexed.refl'
+                    cmd = f'dials.sequence_to_stills.bat reindexed.expt reindexed.refl detector.gain={gain}'
                 else:
-                    cmd = 'dials.sequence_to_stills.bat indexed.expt indexed.refl'
+                    cmd = f'dials.sequence_to_stills.bat indexed.expt indexed.refl detector.gain={gain}'
             else:
-                cmd = 'dials.sequence_to_stills.bat indexed.expt indexed.refl'
+                cmd = f'dials.sequence_to_stills.bat indexed.expt indexed.refl detector.gain={gain}'
             try:
                 print(cmd)
                 p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
@@ -228,14 +228,14 @@ def process_data(index, fn, split, write_h5, lock, files, d_min, reindex=False, 
         traceback.print_exc()
 
 def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refine=False, merge=False, integrate=False, \
-                integrate_sweep=False, scale_sweep=False, file_exists=False, space_group=None, write_sol=False, single_crystal=True,
+                integrate_sweep=False, scale_sweep=False, file_exists=False, space_group=None, write_sol=False, single_crystal=True, gain=1,
                 reference=None):
     futures = []
     FILES = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         for index, fn in enumerate(fns):
             futures.append(executor.submit(process_data, index, fn, split, write_h5, lock, FILES, d_min, reindex, refine, integrate,\
-                                         integrate_sweep, scale_sweep, file_exists, space_group, write_sol, merge, single_crystal))
+                                         integrate_sweep, scale_sweep, file_exists, space_group, write_sol, merge, single_crystal, gain))
     concurrent.futures.wait(futures, return_when=concurrent.futures.ALL_COMPLETED)
 
     if merge:
@@ -260,8 +260,8 @@ def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refin
             print("}", file=f)
             print('multiprocessing.nproc = 8', file=f)
             print('clustering {', file=f)
-            print(f'  absolute_angle_tolerance=1.5', file=f)
-            print(f'  absolute_length_tolerance=1', file=f)
+            print(f'  absolute_angle_tolerance=None', file=f)
+            print(f'  absolute_length_tolerance=None', file=f)
             print('}', file=f)
             print(f'partiality_threshold = {thresh}', file=f)
             print(f'd_min = {d_min}', file=f)
@@ -319,8 +319,8 @@ def main():
                         action="store", type=bool, dest="reindex",
                         help="Convert reindex results instead of index results")
 
-    parser.add_argument("-i", "--input_file",
-                        action="store", type=bool, dest="input_file",
+    parser.add_argument("-f", "--file_exists",
+                        action="store", type=bool, dest="file_exists",
                         help="A input file that list all the directories")
 
     parser.add_argument("-int", "--integrate",
@@ -363,12 +363,16 @@ def main():
                         action="store", type=bool, dest="single_crystal",
                         help="Only use single crystals.")
 
+    parser.add_argument("-g", "--gain",
+                        action="store", type=float, dest="gain",
+                        help="Gain used in integration.")
+
     parser.add_argument("-ref", "--reference",
                         action="store", type=str, dest="reference",
                         help="Reference during scaling.")
 
     parser.set_defaults(split=False, write_h5=False, reindex=False, refine=False, d_min=0.8, thresh=0.6, 
-                        input_file=False, space_group=None, write_sol=False, single_crystal=True, reference=None)
+                        file_exists=False, space_group=None, write_sol=False, single_crystal=False, gain=1, reference=None)
 
     options = parser.parse_args()
     args = options.args
@@ -376,7 +380,7 @@ def main():
     split = options.split
     write_h5 = options.write_h5
     reindex = options.reindex
-    input_file = options.input_file
+    file_exists = options.file_exists
     refine = options.refine
     d_min = options.d_min
     thresh = options.thresh
@@ -387,6 +391,7 @@ def main():
     write_sol = options.write_sol
     scale_sweep = options.scale_sweep
     single_crystal = options.single_crystal
+    gain = options.gain
     reference = options.reference
 
     if args:
@@ -411,7 +416,7 @@ def main():
 
     (CWD/'h5').mkdir(parents=True, exist_ok=True)
 
-    if not input_file:
+    if not file_exists:
         with open(CWD / "files.lst", "w") as f:
             pass
 
@@ -419,5 +424,5 @@ def main():
         pass
     lock = threading.Lock()
     run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex, refine, merge, integrate, integrate_sweep, \
-                scale_sweep, input_file, space_group, write_sol, single_crystal, reference)
+                scale_sweep, file_exists, space_group, write_sol, single_crystal, gain, reference)
     print(f"\033[KUpdated {len(fns)} files")

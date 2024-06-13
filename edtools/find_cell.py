@@ -12,6 +12,9 @@ def unify(cell):
     for i in range(3,6):
         if cell[i] > 90:
             cell[i] = 180 - cell[i]
+    weight = cell[0:3].sum() / cell[3:6].sum()
+    for i in range(3,6):
+        cell[i] = cell[i] * weight
 
 def to_niggli_cell(cell, space_group):
     L = from_uc_to_lattice_matrix(cell)
@@ -540,7 +543,8 @@ def cluster_cell(cells: list,
                  method: str="average", 
                  metric: str="euclidean", 
                  use_radian: bool=False,
-                 use_sine: bool=False):
+                 use_sine: bool=False,
+                 use_raw_cell: bool=False,):
     """Perform hierarchical cluster analysis on a list of cells. 
     
     method: complete, average, weighted, centroid, median, ward, single
@@ -557,6 +561,11 @@ def cluster_cell(cells: list,
         _cells = to_sin(cells)
     elif use_radian:
         _cells = to_radian(cells)
+    elif use_raw_cell:
+        # transform cell into reduced cell
+        _cells = cells.copy()
+        for i in range(0, len(_cells)):
+            unify(_cells[i, :])
     else:
         _cells = cells
 
@@ -693,19 +702,14 @@ def main():
 
     cells = np.array([d['unit_cell'] for d in ds])
     cells = put_in_order(cells)
-    if use_raw_cell:
-        # transform cell into reduced cell
-        raw_cells = []
-        for i in range(0, len(cells)):
-            raw_cell = unify(cells[i, :])
-            raw_cells.append(raw_cell)
+    
     try:
         weights = np.array([d["indexed"] for d in ds])
     except:
         weights = np.array([d["weight"] for d in ds])
 
     if cluster:
-        clusters = cluster_cell(cells, distance=distance, method=method, metric=metric, use_radian=use_radian, use_sine=use_sine)
+        clusters = cluster_cell(cells, distance=distance, method=method, metric=metric, use_radian=use_radian, use_sine=use_sine, use_raw_cell=use_raw_cell)
         for i, idx in clusters.items():
             clustered_ds = [ds[i] for i in idx]
             fout = f"cells_cluster_{i}_{len(idx)}-items.yaml"

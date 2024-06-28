@@ -5,6 +5,8 @@ from skimage.registration import phase_cross_correlation
 from pathlib import Path
 import shutil
 import yaml
+import os
+import matplotlib.pyplot as plt
 
 from instamatic import config
 from instamatic.formats import read_image
@@ -41,7 +43,7 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
         img_list.append((img_name.name.split('.')[0], img))
 
     center_x_first = None
-    pixel_num = 64
+    pixel_num = 14
 
     center_avg = []
     with open(fn.parent.parent / 'beam_centers.txt', 'r') as f:
@@ -59,14 +61,14 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
                 if center_x_first is None:
                     template = img[int(round(center_x-pixel_num)):int(round(center_x+pixel_num)), 
                             int(round(center_y-pixel_num)):int(round(center_y+pixel_num))].copy()
-                    if template.mean() < 500:
+                    if template.mean() < 100:
                         continue
                     center_x_first, center_y_first = find_beam_center(template, sigma=5)
                     update_cent_x, update_cent_y = center_x-pixel_num+center_x_first, center_y-pixel_num+center_y_first
         except:
             traceback.print_exc()
             continue
-
+    print(center, center_x_first)
     # TODO: The interpolation will blur out the diffraction pattern or make some artifacts...
     # Consider change to fourier shift
     for i, (img_name, img) in enumerate(img_list, 1): 
@@ -143,62 +145,66 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
                 header = {}
                 write_mrc(centered_mrc_folder/(img_name+'.mrc'), img[::-1])
 
-    if select_n == 1:
-        img_name_list = (smv_folder/'data').glob('*.img')
-    elif select_n > 1:
-        img_name_list = (smv_folder/f'data_{select_n}').glob('*.img')
-    img_list = []
-    for img_name in img_name_list:
-        img_list.append((img_name.name.split('.')[0]))
-    scanranges = [int(num) for num in img_list]
-    observed_range = set(scanranges)
-    complete_range = set(range(min(observed_range), max(observed_range) + 1))
-    missing_range = observed_range ^ complete_range
-    scanranges = find_subranges(scanranges)
-    scanrange = ' '.join(f'scan_range={i},{j}' for i, j in scanranges)
-    excludeimages = ','.join(str(n) for n in missing_range)
-    rot_x, rot_y, rot_z = rotation_axis_to_xyz(axis, setting='dials')
-    with open(fn, 'w', encoding = 'cp1252') as f:
-        print('@echo off', file=f)
-        print('', file=f)
-        print(f'set scan_range={scanrange}', file=f)
-        print(f'set exclude_images=exclude_images={excludeimages}', file=f)
-        print(f'set rotation_axis=geometry.goniometer.axes={rot_x:.4f},{rot_y:.4f},{rot_z:.4f}', file=f)
-        if select_n == 1:
-            print(f'call dials.import template=./data/#####.img %rotation_axis% panel.gain={gain}', file=f)
-        else:
-            print(f'call dials.import template=./data_{select_n}/#####.img %rotation_axis% panel.gain={gain}', file=f)
-        if ellip_corr is not None:
-            l1 = 1/np.sqrt(ellip_corr[0])
-            l2 = np.sqrt(ellip_corr[0])
-            print(f'dials.generate_distortion_maps.bat imported.expt mode=ellipse phi={ellip_corr[1]} l1={l1} l2={l2}', file=f)
-            if select_n == 1:
-                print(f'call dials.import template=./data/#####.img %rotation_axis% lookup.dx=dx.pickle lookup.dy=dy.pickle panel.gain={gain}', file=f)
-            else:
-                print(f'call dials.import template=./data_{select_n}/#####.img %rotation_axis% lookup.dx=dx.pickle lookup.dy=dy.pickle panel.gain={gain}', file=f)
-        print(f'call dials.find_spots imported.expt %scan_range% nproc=2 find_spot.phil', file=f)
-        if refine_center:
-            print(f'call dials.search_beam_position imported.expt strong.refl', file=f)
-            print(f'call dials.index optimised.expt strong.refl restrain.phil nproc=2', file=f)
-        else:
-            print(f'call dials.index imported.expt strong.refl restrain.phil nproc=2', file=f)
-        if refine:
-            print(f'call dials.integrate refined.expt refined.refl nproc=2', file=f)
-        if symmetry:
-            print(f'call dials.symmetry integrated.expt integrated.refl', file=f)
-        if scale:
-            print(f'call dials.scale symmetrized.expt symmetrized.refl', file=f)
-        if report:
-            print(f'call dials.report scaled.expt scaled.refl', file=f)
-        if export:
-            print(f'call dials.export scaled.expt scaled.refl', file=f)
-    
     if write_smv:
+        if select_n == 1:
+            img_name_list = (smv_folder/'data').glob('*.img')
+        elif select_n > 1:
+            img_name_list = (smv_folder/f'data_{select_n}').glob('*.img')
+        img_list = []
+        for img_name in img_name_list:
+            img_list.append((img_name.name.split('.')[0]))
+        scanranges = [int(num) for num in img_list]
+        observed_range = set(scanranges)
+        complete_range = set(range(min(observed_range), max(observed_range) + 1))
+        missing_range = observed_range ^ complete_range
+        scanranges = find_subranges(scanranges)
+        scanrange = ' '.join(f'scan_range={i},{j}' for i, j in scanranges)
+        excludeimages = ','.join(str(n) for n in missing_range)
+        rot_x, rot_y, rot_z = rotation_axis_to_xyz(axis, setting='dials')
+        with open(fn, 'w', encoding = 'cp1252') as f:
+            print('@echo off', file=f)
+            print('', file=f)
+            print(f'set scan_range={scanrange}', file=f)
+            print(f'set exclude_images=exclude_images={excludeimages}', file=f)
+            print(f'set rotation_axis=geometry.goniometer.axes={rot_x:.4f},{rot_y:.4f},{rot_z:.4f}', file=f)
+            if select_n == 1:
+                print(f'call dials.import template=./data/#####.img %rotation_axis% panel.gain={gain}', file=f)
+            else:
+                print(f'call dials.import template=./data_{select_n}/#####.img %rotation_axis% panel.gain={gain}', file=f)
+            if ellip_corr is not None:
+                l1 = 1/np.sqrt(ellip_corr[0])
+                l2 = np.sqrt(ellip_corr[0])
+                print(f'dials.generate_distortion_maps.bat imported.expt mode=ellipse phi={ellip_corr[1]} l1={l1} l2={l2}', file=f)
+                if select_n == 1:
+                    print(f'call dials.import template=./data/#####.img %rotation_axis% lookup.dx=dx.pickle lookup.dy=dy.pickle panel.gain={gain}', file=f)
+                else:
+                    print(f'call dials.import template=./data_{select_n}/#####.img %rotation_axis% lookup.dx=dx.pickle lookup.dy=dy.pickle panel.gain={gain}', file=f)
+            print(f'call dials.find_spots imported.expt %scan_range% nproc=2 find_spot.phil', file=f)
+            if refine_center:
+                print(f'call dials.search_beam_position imported.expt strong.refl', file=f)
+                print(f'call dials.index optimised.expt strong.refl restrain.phil nproc=2', file=f)
+            else:
+                print(f'call dials.index imported.expt strong.refl restrain.phil nproc=2', file=f)
+            if refine:
+                print(f'call dials.integrate refined.expt refined.refl nproc=2', file=f)
+            if symmetry:
+                print(f'call dials.symmetry integrated.expt integrated.refl', file=f)
+            if scale:
+                print(f'call dials.scale symmetrized.expt symmetrized.refl', file=f)
+            if report:
+                print(f'call dials.report scaled.expt scaled.refl', file=f)
+            if export:
+                print(f'call dials.export scaled.expt scaled.refl', file=f)
+    
         empty = np.zeros_like(img)
         for n in missing_range:
             write_adsc(smv_folder/'data'/(f'{n:05d}'+'.img'), empty, header)
 
     if write_tif:
+        img_name_list = tiff_folder.glob('*.tiff')
+        img_list = []
+        for img_name in img_name_list:
+            img_list.append((img_name.name.split('.')[0]))
         omega = np.degrees(axis)
         # for pets, 0 <= omega <= 360
         if omega < 0:
@@ -315,6 +321,10 @@ def main():
                         action="store", type=float, nargs=2, dest="ellip_corr",
                         help="Use ellipitical correction")
 
+    parser.add_argument("-cs", "--change_summary",
+                        action="store", type=float, nargs=3, dest="change_summary",
+                        help="Change pixel size and rotation axis")
+
     parser.add_argument("-sel_n", "--select_n",
                         action="store", type=int, dest="select_n",
                         help="Select 1 frame in every n frames.")
@@ -322,7 +332,7 @@ def main():
     parser.set_defaults(write_smv=False, write_tif=False, write_mrc=False, integrate=False, center=False, stretch=False, refine=False,
                         symmetry=False, scale=False, report=False, export=False,
                         name='ADSC', skip=None, include_frames=None, gain=1, refine_center=False, ellip_corr=None,
-                        select_n=1)
+                        select_n=1, change_summary=None)
 
     options = parser.parse_args()
     args = options.args
@@ -345,6 +355,11 @@ def main():
     refine_center = options.refine_center
     ellip_corr = options.ellip_corr
     select_n = options.select_n
+    change_summary = options.change_summary
+
+    fns = parse_args_for_fns(args, name="cRED_log.txt", match=match)
+    for fn in fns:
+        os.rename(fn, fn.parent/'summary.txt')
 
     if args:
         fns = []
@@ -357,11 +372,26 @@ def main():
         fns = parse_args_for_fns(args, name="summary.txt", match=match)
     
     for fn in fns:
+        if change_summary:
+            new_lines = []
+            lines = open(fn, "r", encoding = 'cp1252').readlines()
+            if not lines:
+                return
+            for line in lines:
+                if 'Pixelsize' in line:
+                    line = f'Pixelsize: {change_summary[0]} Angstrom^(-1)/pixel\n'
+                elif 'Rotation axis' in line:
+                    line = f'Rotation axis: {change_summary[1]} radians\n'
+                elif 'Wavelength' in line:
+                    line = f'Wavelength: {change_summary[2]} Angstrom\n'
+                new_lines.append(line)
+            open(fn, "w").writelines(new_lines)
+
         lines = open(fn, "r", encoding = 'cp1252').readlines()
         for line in lines:
             if 'Pixelsize' in line:
                 pixelsize = float(line.split()[1])
-            elif 'Step size' in line:
+            elif 'Step size' in line or 'Oscillation angle' in line:
                 osc_angle = float(line.split()[2])
             elif 'Physical' in line:
                 physical_pixelsize = float(line.split()[2])
@@ -397,7 +427,7 @@ def main():
         print('  }', file=f)
         print('  indexing {', file=f)
         print('    refinement_protocol {', file=f)
-        print('      n_macro_cycles = 2', file=f)
+        print('      n_macro_cycles = 5', file=f)
         print('    }', file=f)
         print('    multiple_lattice_search {', file=f)
         print('      max_lattices = 2', file=f)
@@ -414,10 +444,11 @@ def main():
     with open('find_spot.phil', 'w') as f:
         print('spotfinder {', file=f)
         print('  threshold {', file=f)
-        print('    algorithm = *dispersion dispersion_extended radial_profile', file=f)
+        print('    algorithm = dispersion *dispersion_extended radial_profile', file=f)
         print('    dispersion {', file=f)
         print('      gain = 1', file=f)
-        print('      sigma_strong = 6', file=f)
+        print('      sigma_background = 50', file=f)
+        print('      sigma_strong = 3', file=f)
         print('      global_threshold = 1', file=f)
         print('    }', file=f)
         print('  }', file=f)

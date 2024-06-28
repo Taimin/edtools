@@ -1,6 +1,9 @@
 from pathlib import Path
 import shutil
+import os
 from .utils import parse_args_for_fns
+
+from instamatic.formats import read_image
 
 XDSJOBS = ("XYCORR", "INIT", "COLSPOT", "IDXREF", "DEFPIX", "INTEGRATE", "CORRECT")
 
@@ -36,12 +39,20 @@ def update_xds(fn,
                trusted_region=None,
                trusted_pixels=None,
                reidx=None,
-               ref_data=None):
+               ref_data=None,
+               add_all_ranges=False,
+               add_center=False):
     shutil.copyfile(fn, fn.with_name("XDS.INP~"))
     
     lines = open(fn, "r", encoding = 'cp1252').readlines()
     if not lines:
         return
+
+    frames = list((fn.parent/'data').glob('*.img'))
+    num_frames = len(frames)
+    if add_center:
+        img, h = read_image(frames[0])
+        center = [float(h['BEAM_CENTER_Y'])/float(h['PIXEL_SIZE']), float(h['BEAM_CENTER_X'])/float(h['PIXEL_SIZE'])]
 
     pre = "!" if comment else ""
 
@@ -146,6 +157,14 @@ def update_xds(fn,
             line = f"REIDX= {' '.join(reidx)}\n"
         elif ref_data and "REFERENCE_DATA_SET=" in line:
             line = f"REFERENCE_DATA_SET= {ref_data[0]}\n"
+        elif add_all_ranges and "DATA_RANGE=" in line:
+            line = f"DATA_RANGE=           1 {num_frames}\n"
+        elif add_all_ranges and "SPOT_RANGE=" in line:
+            line = f"SPOT_RANGE=           1 {num_frames}\n"
+        elif add_all_ranges and "BACKGROUND_RANGE=" in line:
+            line = f"BACKGROUND_RANGE=     1 {num_frames}\n"
+        elif add_center and "ORGX" in line and "ORGY" in line:
+            line = f"ORGX= {center[0]:.2f}    ORGY= {center[1]:.2f}\n"
         if "Cryst." in line:
             line = ""
 
@@ -241,7 +260,7 @@ def main():
 
     parser.add_argument("-cen", "--center",
                         action="store", type=float, nargs=2, dest="center",
-                        help="Update beam center positio.")
+                        help="Update beam center position.")
 
     parser.add_argument("-ax", "--axis",
                         action="store", type=float, nargs=3, dest="axis",
@@ -295,6 +314,14 @@ def main():
                         action="store", type=str, nargs=1, dest="ref_data",
                         help="Update the trusted pixels.")
 
+    parser.add_argument("-aar", "--add_all_ranges",
+                        action="store", type=bool, dest="add_all_ranges",
+                        help="Add all the ranges in XDS.inp file.")
+
+    parser.add_argument("-ac", "--add_center",
+                        action="store", type=bool, dest="add_center",
+                        help="Add centers in XDS.inp file.")
+
     parser.set_defaults(cell=None,
                         spgr=None,
                         comment=False,
@@ -322,7 +349,10 @@ def main():
                         trusted_region=None,
                         trusted_pixels=None,
                         reidx=None,
-                        ref_data=None,)
+                        ref_data=None,
+                        add_all_ranges=False,
+                        add_center=False,
+                        )
     
     options = parser.parse_args()
     spgr = options.spgr
@@ -356,8 +386,16 @@ def main():
     trusted_pixels = options.trusted_pixels
     reidx = options.reidx
     ref_data = options.ref_data
+    add_all_ranges = options.add_all_ranges
+    add_center = options.add_center
 
-    fns = parse_args_for_fns(fns, name="XDS.INP", match=match)
+    CWD = Path(os.getcwd())
+    smv_folders = list(CWD.rglob('SMV/'))
+    print(smv_folders)
+    for smv_folder in smv_folders:
+        shutil.copy(CWD/'XDS.INP', smv_folder)
+
+    fns = parse_args_for_fns(smv_folders, name="XDS.INP", match=match)
 
     for fn in fns:
         print("\033[K", fn, end='\r')  # "\033[K" clears line
@@ -392,7 +430,9 @@ def main():
                    trusted_region=trusted_region,
                    trusted_pixels=trusted_pixels,
                    reidx=reidx,
-                   ref_data=ref_data)
+                   ref_data=ref_data,
+                   add_all_ranges=add_all_ranges,
+                   add_center=add_center)
 
     print(f"\033[KUpdated {len(fns)} files")
 

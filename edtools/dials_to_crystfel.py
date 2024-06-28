@@ -52,18 +52,18 @@ def process_data(index, fn, split, write_h5, lock, files, d_min, reindex=False, 
             print(f'indexed.expt or indexed.refl file does not exist for crystal number {index}.')
             return -1
 
-        #if reindex:
-        #    print(f'Start reindex {fn}')
-        #    if space_group is None:
-        #        pass
-        #    else:
-        #        cmd = f'dials.reindex.bat indexed.expt indexed.refl space_group={space_group}'
-        #    try:
-        #        print(cmd)
-        #        p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
-        #        p.communicate()
-        #    except Exception as e:
-        #        print("ERROR in subprocess call:", e)
+        if reindex:
+            print(f'Start reindex {fn}')
+            if space_group is None:
+                pass
+            else:
+                cmd = f'dials.reindex.bat indexed.expt indexed.refl space_group={space_group} change_of_basis_op=-a+b+c,a-b+c,a+b-c'
+            try:
+                print(cmd)
+                p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
+                p.communicate()
+            except Exception as e:
+                print("ERROR in subprocess call:", e)
         if refine:
             print(f'Start refine {fn}')
             if reindex:
@@ -134,7 +134,7 @@ def process_data(index, fn, split, write_h5, lock, files, d_min, reindex=False, 
                 print("ERROR in subprocess call:", e)
 
         if integrate:
-            cmd = f'dials.ssx_integrate.bat stills.expt stills.refl prediction.d_min={d_min} mosaicity_max_limit=0.2 ellipsoid.unit_cell.fixed=True min_n_reflections=5 nproc=2'
+            cmd = f'dials.ssx_integrate.bat stills.expt stills.refl prediction.d_min={d_min} mosaicity_max_limit=0.15 ellipsoid.unit_cell.fixed=True min_n_reflections=100 output.batch_size=500 nproc=2'
             try:
                 p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
                 p.communicate()
@@ -144,17 +144,17 @@ def process_data(index, fn, split, write_h5, lock, files, d_min, reindex=False, 
             if not (drc/'integrated_1.refl').is_file():
                 print(f"{drc/'integrated_1.refl'} file does not exist.")
                 return -1
-            if space_group is not None:
-                cmd = f'dials.reindex.bat integrated_1.refl integrated_1.expt space_group={space_group} output.experiments=re_integrated_1.expt output.reflections=re_integrated_1.refl'
-                try:
-                    print(f'Start changing space group for {fn}')
-                    p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
-                    p.communicate()
-                    target = list(drc.glob('re_integrated_1.expt'))[0]
-                except Exception as e:
-                    print("ERROR in subprocess call:", e)
-            elif space_group is None:
-                target = list(drc.glob('integrated_1.expt'))[0]
+            #if space_group is not None:
+            #    cmd = f'dials.reindex.bat integrated_1.refl integrated_1.expt space_group={space_group} output.experiments=re_integrated_1.expt output.reflections=re_integrated_1.refl'
+            #    try:
+            #        print(f'Start changing space group for {fn}')
+            #        p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
+            #        p.communicate()
+            #        target = list(drc.glob('re_integrated_1.expt'))[0]
+            #    except Exception as e:
+            #        print("ERROR in subprocess call:", e)
+            #elif space_group is None:
+            target = list(drc.glob('integrated_1.expt'))[0]
 
             if scale_sweep:
                 target_1 = list(drc.glob('integrated.expt'))[0]
@@ -267,8 +267,8 @@ def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refin
             print(f'd_min = {d_min}', file=f)
             print('symmetry {', file=f)
             print(f'  lattice_symmetry_max_delta=0', file=f)
-            if space_group is not None: 
-                print(f'  space_group = {space_group}', file=f)
+            #if space_group is not None: 
+            #    print(f'  space_group = {space_group}', file=f)
             print('}', file=f)
             if scale_sweep:
                 reference = 'scaled.mtz'

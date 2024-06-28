@@ -148,12 +148,17 @@ def main():
                         action="store", type=bool, dest="find_spot",
                         help="If True, copy the find_spot.phil file to each dials directory")
 
+    parser.add_argument("-min", "--min_spots",
+                        action="store", type=int, dest="min_spots",
+                        help="If True, copy the find_spot.phil file to each dials directory")
+
     parser.set_defaults(use_server=False,
                         match=None,
                         unprocessed_only=False,
                         job='index',
                         restrain=False,
                         find_spot=False,
+                        min_spots=None,
                         )
 
     options = parser.parse_args()
@@ -165,6 +170,7 @@ def main():
     args = options.args
     restrain = options.restrain
     find_spot = options.find_spot
+    min_spots = options.min_spots
 
     if args:
         fns = []
@@ -197,6 +203,23 @@ def main():
         shutil.copy(str(CWD/'index_results.log'), str(CWD/'~index_results.log'))
     with open(CWD / "index_results.log", "w") as f:
         pass
+
+    if min_spots is not None:
+        with open(CWD / 'find_spot.phil', 'w') as f:
+            print('spotfinder {', file=f)
+            print('  filter {', file=f)
+            print(f'    min_spot_size = {min_spots}', file=f)
+            print('    max_spot_size = 100', file=f)
+            print('  }', file=f)
+            print('  threshold {', file=f)
+            print('    algorithm = *dispersion dispersion_extended radial_profile', file=f)
+            print('    dispersion {', file=f)
+            print('      gain = 1', file=f)
+            print('      sigma_strong = 3', file=f)
+            print('      global_threshold = 1', file=f)
+            print('    }', file=f)
+            print('  }', file=f)
+            print('}', file=f)
 
     futures = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:

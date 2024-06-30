@@ -43,7 +43,7 @@ def get_xds_ascii_names(lst):
     return ret
 
 
-def write_xscale_inp(fns, unit_cell, space_group, resolution):
+def write_xscale_inp(fns, unit_cell, space_group, resolution, sigma, cc_half):
     cwd = Path(".").resolve()
 
     cell_str = " ".join((f"{val:.3f}" for val in unit_cell))
@@ -65,6 +65,31 @@ def write_xscale_inp(fns, unit_cell, space_group, resolution):
         print(file=f)
         
         for i, fn in enumerate(fns):
+            if sigma is not None or cc_half is not None and len(resolution) == 0:
+                resolution = [0, 0]
+                corr_fn = fn.parent/'CORRECT.LP'
+                with open(corr_fn, 'r') as f_corr:
+                    lines = f_corr.readlines()
+                for index, line in enumerate(lines):
+                    if 'WILSON STATISTICS OF DATA SET  "XDS_ASCII.HKL"' in line:
+                        line_num = index
+                table = []
+                for i in range(40):
+                    try:
+                        float(lines[line_num - i].split()[0])
+                        table.append([float(a.strip('%').strip('*')) for a in lines[line_num - i].split()])
+                    except:
+                        pass
+                resolution[0] = 80
+                resolution[1] = table[0][0]
+                for row in table:
+                    if sigma is not None:
+                        if row[8] < sigma:
+                            resolution[1] = row[0]
+                    if cc_half is not None:
+                        if row[10] < cc_half:
+                            resolution[1] = row[0] 
+
             fn = fn.absolute()
             try:
                 fn = fn.relative_to(cwd).as_posix()
@@ -81,11 +106,10 @@ def write_xscale_inp(fns, unit_cell, space_group, resolution):
     print(f"Wrote file {f.name}")
 
 
-def write_xdsconv_inp(resolution):
+def write_xdsconv_inp():
     with open("XDSCONV.INP", "w") as f:
         print(f"""
 INPUT_FILE= MERGED.HKL
-INCLUDE_RESOLUTION_RANGE= {resolution[0]} {resolution[1]} ! optional 
 OUTPUT_FILE= shelx.hkl  SHELX    ! Warning: do _not_ name this file "temp.mtz" !
 FRIEDEL'S_LAW= FALSE             ! default is FRIEDEL'S_LAW=TRUE""", file=f)
 
@@ -115,15 +139,27 @@ def main():
                         action="store", type=float, nargs=2, dest="resolution",
                         help="Override the resolution (default: mean unit cell)")
 
+    parser.add_argument("-sig", "--sigma",
+                        action="store", type=float, dest="sigma",
+                        help="Use sigma to determine resolution")
+
+    parser.add_argument("-cc", "--cc_half",
+                        action="store", type=float, dest="cc_half",
+                        help="Use CC_HALF to determine resolution")
+
     parser.set_defaults(cell=None,
                         spgr=None,
-                        resolution=(20, 0.8))
+                        resolution=None,
+                        sigma=None,
+                        cc_half=None,)
     
     options = parser.parse_args()
     spgr = options.spgr
     cell = options.cell
     resolution = options.resolution
     args = options.args
+    sigma = options.sigma
+    cc_half = options.cc_half
     
     if not args:  # attempt to populate args
         if os.path.exists("cells.yaml"):
@@ -150,6 +186,9 @@ def main():
 
     cells = np.array([d["unit_cell"] for d in lst])
 
+    if resolution is None:
+        resolution = []
+
     if not cell:
         cell = np.mean(cells, axis=0)
 
@@ -168,8 +207,8 @@ def main():
         laue_symm = d["laue_symmetry"]
         print(f"Lowest possible symmetry for {spgr} ({lattice}): {laue_symm}")
 
-    write_xscale_inp(fns, unit_cell=cell, space_group=spgr, resolution=resolution)
-    write_xdsconv_inp(resolution=resolution)
+    write_xscale_inp(fns, unit_cell=cell, space_group=spgr, resolution=resolution, sigma=sigma, cc_half=cc_half)
+    write_xdsconv_inp()
 
 
 if __name__ == '__main__':

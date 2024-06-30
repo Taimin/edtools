@@ -1,9 +1,11 @@
 from pathlib import Path
 import shutil
 import os
+import pandas as pd
 from .utils import parse_args_for_fns
 
 from instamatic.formats import read_image
+from instamatic.tools import find_subranges
 
 XDSJOBS = ("XYCORR", "INIT", "COLSPOT", "IDXREF", "DEFPIX", "INTEGRATE", "CORRECT")
 
@@ -41,7 +43,8 @@ def update_xds(fn,
                reidx=None,
                ref_data=None,
                add_all_ranges=False,
-               add_center=False):
+               add_center=False,
+               exclude_range_spots=0):
     shutil.copyfile(fn, fn.with_name("XDS.INP~"))
     
     lines = open(fn, "r", encoding = 'cp1252').readlines()
@@ -169,6 +172,24 @@ def update_xds(fn,
             line = ""
 
 
+        new_lines.append(line)
+
+    if exclude_range_spots is not None:
+        df = pd.read_csv(fn.parent/'SPOT.XDS', names=['x','y','z','I','h','k','l'], sep='\s+')
+        df = df[df.apply(lambda row: row['h'] != 0 and row['k'] != 0 and row['l'] != 0, axis=1)]
+        z = df['z'].sort_values()
+        z = z.reset_index(drop=True)
+        max_frame = int(z.max())+1
+        bins = list(range(max_frame+1))
+        # 使用 pd.cut() 将数据分成 bin
+        categorized_z = pd.cut(z, bins=bins, labels=False, include_lowest=True)
+        # 使用 value_counts() 统计每个 bin 中的频率
+        frequency = categorized_z.value_counts()
+        thresh = (frequency >= exclude_range_spots).sum()
+        fit_range = set(frequency[:thresh].index.values+1)
+        complete_range = set(range(1, max_frame+1))
+        missing_range = fit_range ^ complete_range
+        line = '\n'.join([f'EXCLUDE_DATA_RANGE={i} {j}' for i, j in find_subranges(missing_range)])
         new_lines.append(line)
 
     if apd:
@@ -322,6 +343,10 @@ def main():
                         action="store", type=bool, dest="add_center",
                         help="Add centers in XDS.inp file.")
 
+    parser.add_argument("-ex", "--exclude_range_spots",
+                        action="store", type=int, dest="exclude_range_spots",
+                        help="Exclude range using reflections.")
+
     parser.set_defaults(cell=None,
                         spgr=None,
                         comment=False,
@@ -352,6 +377,7 @@ def main():
                         ref_data=None,
                         add_all_ranges=False,
                         add_center=False,
+                        exclude_range_spots=None,
                         )
     
     options = parser.parse_args()
@@ -388,6 +414,7 @@ def main():
     ref_data = options.ref_data
     add_all_ranges = options.add_all_ranges
     add_center = options.add_center
+    exclude_range_spots = options.exclude_range_spots
 
     CWD = Path(os.getcwd())
     smv_folders = list(CWD.rglob('SMV/'))
@@ -432,7 +459,8 @@ def main():
                    reidx=reidx,
                    ref_data=ref_data,
                    add_all_ranges=add_all_ranges,
-                   add_center=add_center)
+                   add_center=add_center,
+                   exclude_range_spots=exclude_range_spots,)
 
     print(f"\033[KUpdated {len(fns)} files")
 

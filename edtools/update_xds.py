@@ -2,6 +2,7 @@ from pathlib import Path
 import shutil
 import os
 import pandas as pd
+import traceback
 from .utils import parse_args_for_fns
 
 from instamatic.formats import read_image
@@ -44,7 +45,8 @@ def update_xds(fn,
                ref_data=None,
                add_all_ranges=False,
                add_center=False,
-               exclude_range_spots=0):
+               exclude_range_spots=0,
+               clean=False):
     shutil.copyfile(fn, fn.with_name("XDS.INP~"))
     
     lines = open(fn, "r", encoding = 'cp1252').readlines()
@@ -54,7 +56,11 @@ def update_xds(fn,
     frames = list((fn.parent/'data').glob('*.img'))
     num_frames = len(frames)
     if add_center:
-        img, h = read_image(frames[0])
+        try:
+            img, h = read_image(frames[0])
+        except:
+            traceback.print_exc()
+            return -1
         center = [float(h['BEAM_CENTER_Y'])/float(h['PIXEL_SIZE']), float(h['BEAM_CENTER_X'])/float(h['PIXEL_SIZE'])]
 
     pre = "!" if comment else ""
@@ -171,7 +177,6 @@ def update_xds(fn,
         if "Cryst." in line:
             line = ""
 
-
         new_lines.append(line)
 
     if exclude_range_spots is not None:
@@ -202,6 +207,19 @@ def update_xds(fn,
         
     open(fn, "w").writelines(new_lines)
 
+    if clean:
+        try:
+            os.remove(fn.parent/'CORRECT.LP')
+        except OSError:
+            pass
+        try:
+            os.remove(fn.parent/'INTEGRATE.HKL')
+        except OSError:
+            pass
+        try:
+            os.remove(fn.parent/'XDS_ASCII.HKL')
+        except OSError:
+            pass
 
 def main():
     import argparse
@@ -347,6 +365,11 @@ def main():
                         action="store", type=int, dest="exclude_range_spots",
                         help="Exclude range using reflections.")
 
+    parser.add_argument("-cl", "--clean",
+                        action="store", type=bool, dest="clean",
+                        help="Clean XDS processing files.")
+
+
     parser.set_defaults(cell=None,
                         spgr=None,
                         comment=False,
@@ -378,6 +401,7 @@ def main():
                         add_all_ranges=False,
                         add_center=False,
                         exclude_range_spots=None,
+                        clean=False,
                         )
     
     options = parser.parse_args()
@@ -415,15 +439,15 @@ def main():
     add_all_ranges = options.add_all_ranges
     add_center = options.add_center
     exclude_range_spots = options.exclude_range_spots
+    clean = options.clean
 
     CWD = Path(os.getcwd())
     smv_folders = list(CWD.rglob('SMV/'))
-    print(smv_folders)
     for smv_folder in smv_folders:
         shutil.copy(CWD/'XDS.INP', smv_folder)
 
     fns = parse_args_for_fns(smv_folders, name="XDS.INP", match=match)
-
+    print(fns)
     for fn in fns:
         print("\033[K", fn, end='\r')  # "\033[K" clears line
         update_xds(fn, 
@@ -460,7 +484,8 @@ def main():
                    ref_data=ref_data,
                    add_all_ranges=add_all_ranges,
                    add_center=add_center,
-                   exclude_range_spots=exclude_range_spots,)
+                   exclude_range_spots=exclude_range_spots,
+                   clean=clean,)
 
     print(f"\033[KUpdated {len(fns)} files")
 

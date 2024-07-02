@@ -130,7 +130,7 @@ eof""", file=f)
         return {}
 
 
-def run_xscale(clusters, cell, spgr, resolution=None, ioversigma=2, sigma=None, cc_half=None):
+def run_xscale(clusters, cell, spgr, resolution=None, ioversigma=2, sigma=None, cc_half=None, reindex=None):
     results = []
 
     keys = sorted(clusters.keys())
@@ -170,11 +170,12 @@ def run_xscale(clusters, cell, spgr, resolution=None, ioversigma=2, sigma=None, 
             fn = Path(fn)
             dst = drc / f"{j}_{fn.name}"
             shutil.copy(fn, dst)
+            corr_fn = fn.parent/'CORRECT.LP'
+            with open(corr_fn, 'r') as f_corr:
+                lines = f_corr.readlines()
             if sigma is not None or cc_half is not None and len(resolution) == 0:
                 resolution = [0, 0]
-                corr_fn = fn.parent/'CORRECT.LP'
-                with open(corr_fn, 'r') as f_corr:
-                    lines = f_corr.readlines()
+                
                 for index, line in enumerate(lines):
                     if 'WILSON STATISTICS OF DATA SET  "XDS_ASCII.HKL"' in line:
                         line_num = index
@@ -194,9 +195,26 @@ def run_xscale(clusters, cell, spgr, resolution=None, ioversigma=2, sigma=None, 
                     if cc_half is not None:
                         if row[10] < cc_half:
                             resolution[1] = row[0] 
+
+            reindex_matrix = None
+            if reindex is not None:
+                for index, line in enumerate(lines):
+                    if '  LATTICE-  BRAVAIS-   QUALITY  UNIT CELL CONSTANTS (ANGSTROEM & DEGREES)    REINDEXING TRANSFORMATION' in line:
+                        line_num = index
+                for i in range(44):
+                    split = lines[line_num+3+i].split()
+                    if len(split) == 22:
+                        if int(split[1]) == reindex:
+                            reindex_matrix = '  '.join(split[10:])
+
             print(f"    ! {fn}", file=f)
-            print(f"    INPUT_FILE= {dst.name}", file=f)
-            print(f"    INCLUDE_RESOLUTION_RANGE= {resolution[0]} {resolution[1]}", file=f)
+            if reindex is None:
+                print(f"    INPUT_FILE= {dst.name}", file=f)
+                print(f"    INCLUDE_RESOLUTION_RANGE= {resolution[0]} {resolution[1]}", file=f)
+            elif reindex is not None and reindex_matrix is not None:
+                print(f"    INPUT_FILE= {dst.name}", file=f)
+                print(f"    INCLUDE_RESOLUTION_RANGE= {resolution[0]} {resolution[1]}", file=f)
+                print(f"    REIDX_ISET=  {reindex_matrix} ", file=f)
             print(file=f)
 
             print(f" {j: 3d} {dst.name} {resolution[0]:8.2f} {resolution[1]:8.2f}  # {fn.parent}", file=filelist)  
@@ -410,6 +428,10 @@ def main():
                         action="store", type=float, dest="cc_half",
                         help="Use CC_HALF to determine resolution")
 
+    parser.add_argument("-rdx", "--reindex",
+                        action="store", type=int, dest="reindex",
+                        help="Reindex according to the lattice character")
+
     parser.set_defaults(distance=None,
                         method="average",
                         resolution=None,
@@ -417,7 +439,8 @@ def main():
                         show_dendrogram_only=False,
                         min_size=1,
                         sigma=None,
-                        cc_half=None,)
+                        cc_half=None,
+                        reindex=None)
 
     options = parser.parse_args()
     distance = options.distance
@@ -428,6 +451,7 @@ def main():
     show_dendrogram_only = options.show_dendrogram_only
     sigma = options.sigma
     cc_half = options.cc_half
+    reindex = options.reindex
 
     sort_key = "Completeness"
 
@@ -446,7 +470,8 @@ def main():
         resolution = []
 
     clusters = get_clusters(z, distance=distance, fns=obj.filenames, method=method, min_size=min_size)
-    results = run_xscale(clusters, cell=obj.unit_cell, spgr=obj.space_group, resolution=resolution, ioversigma=ioversigma, sigma=sigma, cc_half=cc_half)
+    results = run_xscale(clusters, cell=obj.unit_cell, spgr=obj.space_group, resolution=resolution, ioversigma=ioversigma, 
+                        sigma=sigma, cc_half=cc_half, reindex=reindex)
 
     print("")
     print("Clustering results")

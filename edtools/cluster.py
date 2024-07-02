@@ -199,7 +199,7 @@ def run_xscale(clusters, cell, spgr, resolution=None, ioversigma=2, sigma=None, 
             print(f"    INCLUDE_RESOLUTION_RANGE= {resolution[0]} {resolution[1]}", file=f)
             print(file=f)
 
-            print(f" {j: 3d} {dst.name} {dmax:8.2f} {dmin:8.2f}  # {fn.parent}", file=filelist)  
+            print(f" {j: 3d} {dst.name} {resolution[0]:8.2f} {resolution[1]:8.2f}  # {fn.parent}", file=filelist)  
     
         f.close()
         filelist.close()

@@ -43,7 +43,7 @@ def get_xds_ascii_names(lst):
     return ret
 
 
-def write_xscale_inp(fns, unit_cell, space_group, resolution, sigma, cc_half):
+def write_xscale_inp(fns, unit_cell, space_group, resolution, sigma, cc_half, reindex):
     cwd = Path(".").resolve()
 
     cell_str = " ".join((f"{val:.3f}" for val in unit_cell))
@@ -65,11 +65,12 @@ def write_xscale_inp(fns, unit_cell, space_group, resolution, sigma, cc_half):
         print(file=f)
         
         for i, fn in enumerate(fns):
+            corr_fn = fn.parent/'CORRECT.LP'
+            with open(corr_fn, 'r') as f_corr:
+                lines = f_corr.readlines()
             if sigma is not None or cc_half is not None and len(resolution) == 0:
                 resolution = [0, 0]
-                corr_fn = fn.parent/'CORRECT.LP'
-                with open(corr_fn, 'r') as f_corr:
-                    lines = f_corr.readlines()
+                
                 for index, line in enumerate(lines):
                     if 'WILSON STATISTICS OF DATA SET  "XDS_ASCII.HKL"' in line:
                         line_num = index
@@ -90,6 +91,17 @@ def write_xscale_inp(fns, unit_cell, space_group, resolution, sigma, cc_half):
                         if row[10] < cc_half:
                             resolution[1] = row[0] 
 
+            reindex_matrix = None
+            if reindex is not None:
+                for index, line in enumerate(lines):
+                    if '  LATTICE-  BRAVAIS-   QUALITY  UNIT CELL CONSTANTS (ANGSTROEM & DEGREES)    REINDEXING TRANSFORMATION' in line:
+                        line_num = index
+                for i in range(44):
+                    split = lines[line_num+3+i].split()
+                    if len(split) == 22:
+                        if int(split[1]) == reindex:
+                            reindex_matrix = '  '.join(split[10:])
+
             fn = fn.absolute()
             try:
                 fn = fn.relative_to(cwd).as_posix()
@@ -99,8 +111,13 @@ def write_xscale_inp(fns, unit_cell, space_group, resolution, sigma, cc_half):
                     drive_letter = drive.lower()[0]
                     fn = fn.as_posix().replace(f"{drive}", f"/mnt/{drive_letter}")
 
-            print(f"    INPUT_FILE= {fn}", file=f)
-            print(f"    INCLUDE_RESOLUTION_RANGE= {resolution[0]} {resolution[1]}", file=f)
+            if reindex is None:
+                print(f"    INPUT_FILE= {fn}", file=f)
+                print(f"    INCLUDE_RESOLUTION_RANGE= {resolution[0]} {resolution[1]}", file=f)
+            elif reindex is not None and reindex_matrix is not None:
+                print(f"    INPUT_FILE= {fn}", file=f)
+                print(f"    INCLUDE_RESOLUTION_RANGE= {resolution[0]} {resolution[1]}", file=f)
+                print(f"    REIDX_ISET=  {reindex_matrix} ", file=f)
             print(file=f)
 
     print(f"Wrote file {f.name}")
@@ -147,11 +164,16 @@ def main():
                         action="store", type=float, dest="cc_half",
                         help="Use CC_HALF to determine resolution")
 
+    parser.add_argument("-rdx", "--reindex",
+                        action="store", type=int, dest="reindex",
+                        help="Reindex according to the lattice character")
+
     parser.set_defaults(cell=None,
                         spgr=None,
                         resolution=None,
                         sigma=None,
-                        cc_half=None,)
+                        cc_half=None,
+                        reindex=None)
     
     options = parser.parse_args()
     spgr = options.spgr
@@ -160,6 +182,7 @@ def main():
     args = options.args
     sigma = options.sigma
     cc_half = options.cc_half
+    reindex = options.reindex
     
     if not args:  # attempt to populate args
         if os.path.exists("cells.yaml"):
@@ -207,7 +230,7 @@ def main():
         laue_symm = d["laue_symmetry"]
         print(f"Lowest possible symmetry for {spgr} ({lattice}): {laue_symm}")
 
-    write_xscale_inp(fns, unit_cell=cell, space_group=spgr, resolution=resolution, sigma=sigma, cc_half=cc_half)
+    write_xscale_inp(fns, unit_cell=cell, space_group=spgr, resolution=resolution, sigma=sigma, cc_half=cc_half, reindex=reindex)
     write_xdsconv_inp()
 
 

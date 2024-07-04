@@ -369,6 +369,10 @@ def main():
                         action="store", type=bool, dest="clean",
                         help="Clean XDS processing files.")
 
+    parser.add_argument("-ri", "--replace_input",
+                        action="store", type=bool, dest="replace_input",
+                        help="Replace XDS input file.")
+
 
     parser.set_defaults(cell=None,
                         spgr=None,
@@ -402,6 +406,7 @@ def main():
                         add_center=False,
                         exclude_range_spots=None,
                         clean=False,
+                        replace_input=False,
                         )
     
     options = parser.parse_args()
@@ -440,13 +445,17 @@ def main():
     add_center = options.add_center
     exclude_range_spots = options.exclude_range_spots
     clean = options.clean
+    replace_input = options.replace_input
 
-    CWD = Path(os.getcwd())
-    smv_folders = list(CWD.rglob('SMV/'))
-    for smv_folder in smv_folders:
-        shutil.copy(CWD/'XDS.INP', smv_folder)
 
-    fns = parse_args_for_fns(smv_folders, name="XDS.INP", match=match)
+    if replace_input:
+        CWD = Path(os.getcwd())
+        smv_folders = list(CWD.rglob('SMV/'))
+        for smv_folder in smv_folders:
+            shutil.copy(CWD/'XDS.INP', smv_folder)
+        fns = parse_args_for_fns(smv_folders, name="XDS.INP", match=match)
+    else:
+        fns = parse_args_for_fns(fns, name="XDS.INP", match=match)
     print(fns)
     for fn in fns:
         print("\033[K", fn, end='\r')  # "\033[K" clears line

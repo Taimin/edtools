@@ -43,7 +43,7 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
         img_list.append((img_name.name.split('.')[0], img))
 
     center_x_first = None
-    pixel_num = 14
+    pixel_num = 50
 
     center_avg = []
     with open(fn.parent.parent / 'beam_centers.txt', 'r') as f:

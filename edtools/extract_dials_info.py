@@ -16,8 +16,6 @@ CWD = Path(os.getcwd())
 class dials_parser:
     """docstring for dials_parser"""
     def __init__(self, filename, job='index'):
-        self.ios_threshold = 0.8
-
         self.filename = Path(filename).resolve()
         self.d = self.parse(job)
 
@@ -183,7 +181,11 @@ def main():
                         action="store", type=float, dest="thresh_percent",
                         help="Threshold based on percentage of indexed spots.")
 
-    parser.set_defaults(match=None, gather=False, job='index', single_crystal=False, thresh_percent=None, thresh_indexed=None)
+    parser.add_argument("-a_p", "--add_path",
+                        action="store", type=str, dest="add_path",
+                        help="Add path.")
+
+    parser.set_defaults(match=None, gather=False, job='index', single_crystal=False, thresh_percent=None, thresh_indexed=None, add_path=None)
 
     options = parser.parse_args()
 
@@ -194,6 +196,7 @@ def main():
     single_crystal = options.single_crystal
     thresh_percent = options.thresh_percent
     thresh_indexed = options.thresh_indexed
+    add_path = options.add_path
 
     if job == 'index':
         if args:
@@ -241,7 +244,10 @@ def main():
                     if continue_flag == 1:
                         continue
 
-                    crystal["directory"] = p.d[i]["fn"]
+                    if add_path is None:
+                        crystal["directory"] = p.d[i]["fn"]
+                    else:
+                        crystal["directory"] = str(add_path/Path(p.d[i]["fn"]))
                     crystal["number"] = cnt
                     crystal["unit_cell"] = p.d[i]["cell"]
                     crystal["space_group"] = p.d[i]["spgr"]

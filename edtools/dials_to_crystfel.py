@@ -57,7 +57,7 @@ def process_data(index, fn, split, write_h5, lock, files, d_min, reindex=False, 
             if space_group is None:
                 pass
             else:
-                cmd = f'dials.reindex.bat indexed.expt indexed.refl space_group={space_group} change_of_basis_op=-a+b+c,a-b+c,a+b-c'
+                cmd = f'dials.reindex.bat indexed.expt indexed.refl space_group={space_group}'
             try:
                 print(cmd)
                 p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
@@ -134,7 +134,7 @@ def process_data(index, fn, split, write_h5, lock, files, d_min, reindex=False, 
                 print("ERROR in subprocess call:", e)
 
         if integrate:
-            cmd = f'dials.ssx_integrate.bat stills.expt stills.refl prediction.d_min={d_min} mosaicity_max_limit=0.15 ellipsoid.unit_cell.fixed=True min_n_reflections=100 output.batch_size=500 nproc=2'
+            cmd = f'dials.ssx_integrate.bat stills.expt stills.refl prediction.d_min={d_min} mosaicity_max_limit=0.2 ellipsoid.unit_cell.fixed=True min_n_reflections=5 output.batch_size=500 nproc=2'
             try:
                 p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
                 p.communicate()
@@ -267,8 +267,8 @@ def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refin
             print(f'd_min = {d_min}', file=f)
             print('symmetry {', file=f)
             print(f'  lattice_symmetry_max_delta=0', file=f)
-            #if space_group is not None: 
-            #    print(f'  space_group = {space_group}', file=f)
+            if space_group is not None: 
+                print(f'  space_group = {space_group}', file=f)
             print('}', file=f)
             if scale_sweep:
                 reference = 'scaled.mtz'

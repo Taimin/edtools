@@ -15,11 +15,11 @@ CWD = Path(os.getcwd())
 
 class dials_parser:
     """docstring for dials_parser"""
-    def __init__(self, filename, job='index'):
+    def __init__(self, filename, job='index', use_refined=False):
         self.filename = Path(filename).resolve()
-        self.d = self.parse(job)
+        self.d = self.parse(job, use_refined)
 
-    def parse(self, job):
+    def parse(self, job, use_refined):
         fn = self.filename
         with open(fn, "r") as f:
             lines = f.readlines()
@@ -27,28 +27,55 @@ class dials_parser:
         crystals = []
         line_start = []
         line_end = []
+        interval = []
+        tmp = []
 
         d = {}
         d_list = []
 
-        for index, line in enumerate(lines):
-            if line.startswith("Indexed crystal models:"):
-                line_start.append(index)
-            elif line.startswith("Starting refinement (macro-cycle 1)"):
-                line_end.append(index)
+        if use_refined:
+            for index, line in enumerate(lines):
+                if line.startswith("Refined crystal models:"):
+                    line_start.append(index)
+                elif line.startswith("Saving refined experiments to indexed.expt"):
+                    end = index
+            try:
+                start = line_start[-1]
+                tmp = lines[start:end]
+            except:
+                pass
 
-        for start, end in zip(line_start, line_end):
-            if end > start:
-                crystals.append(lines[start:end])
-            else:
-                print('Check the index.log file')
-                return -1
-                
+            for index, line in enumerate(tmp):
+                if line.startswith("model "):
+                    interval.append(index)
+                if line.startswith("|   Imageset"):
+                    infos = [info.strip() for info in tmp[index+2].split('|')]
+                    total_spots = int(infos[2]) + int(infos[3])
+            interval.append(index)
+            if len(interval) > 1:
+                for i in range(len(interval)-1):
+                    crystals.append(tmp[interval[i]:interval[i+1]])
+        else:
+            for index, line in enumerate(lines):
+                if line.startswith("Indexed crystal models:"):
+                    line_start.append(index)
+                elif line.startswith("Starting refinement (macro-cycle 1)"):
+                    line_end.append(index)
+            for start, end in zip(line_start, line_end):
+                if end > start:
+                    crystals.append(lines[start:end])
+                else:
+                    print('Check the index.log file')
+                    return -1
         for crystal in crystals:
             cell, spgr = None, None
             for index, line in enumerate(crystal):
                 if line.startswith("model"):
                     model_num = int(line.split()[1])
+                    if use_refined:
+                        d['indexed'] = int(line.split()[2][1:])
+                        d['unindexed'] = int(total_spots-d['indexed'])
+                        d['percent'] = d['indexed'] / total_spots
                 elif line.startswith("    Unit cell"):
                     line = re.sub(r'\([^)]*\)', '', line)
                     line = line.strip("\n").split()[2:8]
@@ -56,7 +83,7 @@ class dials_parser:
                     cell = list(map(float, line))
                 elif line.startswith("    Space group"):
                     spgr = ''.join(line.strip("\n").split()[2:])
-                elif line.startswith("|   Imageset"):
+                elif line.startswith("|   Imageset") and not use_refined:
                     infos = [info.strip() for info in crystal[index+2].split('|')]
                     d['indexed'] = int(infos[2])
                     d['unindexed'] = int(infos[3])
@@ -80,7 +107,6 @@ class dials_parser:
             d['A_matrix'] = A_matrix
             d["fn"] = str(os.path.relpath(fn.parent, CWD))
             d_list.append(copy.deepcopy(d))
-        
         return d_list
 
     def cell_info(self, sequence=0):
@@ -185,7 +211,12 @@ def main():
                         action="store", type=str, dest="add_path",
                         help="Add path.")
 
-    parser.set_defaults(match=None, gather=False, job='index', single_crystal=False, thresh_percent=None, thresh_indexed=None, add_path=None)
+    parser.add_argument("-u_r", "--use_refined",
+                        action="store", type=bool, dest="use_refined",
+                        help="Use refined unit cell.")
+
+    parser.set_defaults(match=None, gather=False, job='index', single_crystal=False, thresh_percent=None, thresh_indexed=None, 
+                        add_path=None, use_refined=False)
 
     options = parser.parse_args()
 
@@ -197,6 +228,7 @@ def main():
     thresh_percent = options.thresh_percent
     thresh_indexed = options.thresh_indexed
     add_path = options.add_path
+    use_refined = options.use_refined
 
     if job == 'index':
         if args:
@@ -213,7 +245,7 @@ def main():
         cnt = 0
         for fn in fns:
             try:
-                p = dials_parser(fn, job=job)
+                p = dials_parser(fn, job=job, use_refined=use_refined)
             except UnboundLocalError as e:
                 print(e)
                 continue

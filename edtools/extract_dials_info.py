@@ -29,6 +29,10 @@ class dials_parser:
         line_end = []
         interval = []
         tmp = []
+        tmp1 = []
+        rmsd_start = []
+        rmsds = []
+
 
         d = {}
         d_list = []
@@ -37,11 +41,14 @@ class dials_parser:
             for index, line in enumerate(lines):
                 if line.startswith("Refined crystal models:"):
                     line_start.append(index)
-                elif line.startswith("Saving refined experiments to indexed.expt"):
-                    end = index
+                elif line.startswith("Setting d_min:") or line.startswith("Finish searching for more lattices:") or 
+                    line.startswith("Change of basis op:"):
+                    line_end.append(index)
+                elif line.startswith("RMSDs by experiment:"):
+                    rmsd_start.append(index)
             try:
-                start = line_start[-1]
-                tmp = lines[start:end]
+                tmp = lines[line_start[-1]:line_end[-1]]
+                tmp1 = lines[rmsd_start[-1]:line_start[-1]]
             except:
                 pass
 
@@ -55,6 +62,12 @@ class dials_parser:
             if len(interval) > 1:
                 for i in range(len(interval)-1):
                     crystals.append(tmp[interval[i]:interval[i+1]])
+
+            for index, line in enumerate(tmp1):
+                if line.startswith("|     "):
+                    line = line.split('|')
+                    rmsds.append([int(line[2]), float(line[3]), float(line[4]), float(line[4])])
+            last_indexed_spots = 0
         else:
             for index, line in enumerate(lines):
                 if line.startswith("Indexed crystal models:"):
@@ -67,15 +80,16 @@ class dials_parser:
                 else:
                     print('Check the index.log file')
                     return -1
-        for crystal in crystals:
+        for i, crystal in enumerate(crystals):
             cell, spgr = None, None
             for index, line in enumerate(crystal):
                 if line.startswith("model"):
                     model_num = int(line.split()[1])
                     if use_refined:
-                        d['indexed'] = int(line.split()[2][1:])
-                        d['unindexed'] = int(total_spots-d['indexed'])
+                        d['indexed'] = int(line.split()[2][1:]) + last_indexed_spots
+                        d['unindexed'] = int(total_spots - d['indexed'])
                         d['percent'] = d['indexed'] / total_spots
+                        last_indexed_spots = d['indexed']
                 elif line.startswith("    Unit cell"):
                     line = re.sub(r'\([^)]*\)', '', line)
                     line = line.strip("\n").split()[2:8]
@@ -106,6 +120,11 @@ class dials_parser:
             d["model_num"] = model_num
             d['A_matrix'] = A_matrix
             d["fn"] = str(os.path.relpath(fn.parent, CWD))
+            if use_refined:
+                try:
+                    d["rmsd"] = rmsds[i]
+                except IndexError:
+                    d["rmsd"] = []
             d_list.append(copy.deepcopy(d))
         return d_list
 
@@ -150,24 +169,6 @@ class dials_parser:
                 k=k, dmax=dmax_sh, dmin=dmin_sh, **d[outer])
 
         return s
-
-def cells_to_yaml(ps, fn="cells.yaml"):
-    ds = []
-    for i, p in enumerate(ps):
-        i += 1
-        d = {}
-        for crystal in p.d:
-            d["directory"] = crystal["fn"]
-            d["number"] = i
-            d["unit_cell"] = crystal["cell"]
-            d["space_group"] = crystal["spgr"]
-            d["indexed"] = crystal["indexed"]
-            d["percent"] = crystal["percent"]
-            ds.append(d)
-
-    yaml.dump(ds, open(fn, "w"))
-
-    print(f"Wrote {i} cells to file {fn}")
 
 
 def main():
@@ -247,7 +248,7 @@ def main():
             try:
                 p = dials_parser(fn, job=job, use_refined=use_refined)
             except UnboundLocalError as e:
-                print(e)
+                print(fn, e)
                 continue
             if p and p.d:
                 if single_crystal:

@@ -94,8 +94,8 @@ def update_xds(fn,
             line = f"INCLUDE_RESOLUTION_RANGE= {lo_res:.2f} {hi_res:.2f}\n"
         elif wfac1 and "WFAC1" in line:
             line = f"WFAC1= {wfac1:.1f}\n"
-        elif sp and "STRONG_PIXEL" in line:
-            sp_line = f"{pre}STRONG_PIXEL= {sp}\n"
+        elif sp and "SIGNAL_PIXEL" in line:
+            sp_line = f"{pre}SIGNAL_PIXEL= {sp}\n"
             line = sp_line
         elif indnumthre and "MINIMUM_FRACTION_OF_INDEXED_SPOTS" in line:
             line = f"MINIMUM_FRACTION_OF_INDEXED_SPOTS= {indnumthre:.2f}\n" 

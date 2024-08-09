@@ -200,6 +200,7 @@ def main():
                         folder = '/'.join(folder)
                         file = Path('./' + folder) / "dials_process.bat"
                         fns.append(file)
+        fns = list(set(fns))
         fns = [fn.resolve() for fn in fns]
     else:
         fns = parse_args_for_fns(args, name="dials_process.bat", match=match)

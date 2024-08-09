@@ -134,7 +134,7 @@ def process_data(index, fn, split, write_h5, lock, files, d_min, reindex=False, 
                 print("ERROR in subprocess call:", e)
 
         if integrate:
-            cmd = f'dials.ssx_integrate.bat stills.expt stills.refl prediction.d_min={d_min} mosaicity_max_limit=0.2 ellipsoid.unit_cell.fixed=True min_n_reflections=8 output.batch_size=500 nproc=2'
+            cmd = f'dials.ssx_integrate.bat stills.expt stills.refl prediction.d_min={d_min} mosaicity_max_limit=0.2 ellipsoid.unit_cell.fixed=True min_n_reflections=10 output.batch_size=500 nproc=2'
             try:
                 p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
                 p.communicate()

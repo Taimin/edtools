@@ -41,7 +41,7 @@ class dials_parser:
             for index, line in enumerate(lines):
                 if line.startswith("Refined crystal models:"):
                     line_start.append(index)
-                elif line.startswith("Setting d_min:") or line.startswith("Finish searching for more lattices:") or 
+                elif line.startswith("Setting d_min:") or line.startswith("Finish searching for more lattices:") or \
                     line.startswith("Change of basis op:"):
                     line_end.append(index)
                 elif line.startswith("RMSDs by experiment:"):
@@ -216,8 +216,12 @@ def main():
                         action="store", type=bool, dest="use_refined",
                         help="Use refined unit cell.")
 
+    parser.add_argument("-r", "--rmsd",
+                        action="store", type=float, dest="rmsd",
+                        help="Set an rmsdthreshold.")
+
     parser.set_defaults(match=None, gather=False, job='index', single_crystal=False, thresh_percent=None, thresh_indexed=None, 
-                        add_path=None, use_refined=False)
+                        add_path=None, use_refined=False, rmsd=None)
 
     options = parser.parse_args()
 
@@ -230,6 +234,7 @@ def main():
     thresh_indexed = options.thresh_indexed
     add_path = options.add_path
     use_refined = options.use_refined
+    rmsd = options.rmsd
 
     if job == 'index':
         if args:
@@ -238,6 +243,7 @@ def main():
                 ds = yaml.load(open(arg, "r"), Loader=yaml.Loader)
                 for d in ds:
                     fns.append(Path(d['directory']) / "dials.index.log")
+            fns = list(set(fns))
             fns = [fn.resolve() for fn in fns]
         else:
             fns = parse_args_for_fns(args, name="dials.index.log", match=match)
@@ -273,6 +279,9 @@ def main():
                         else:
                             if p.d[i]['percent'] - p.d[i-1]['percent'] < thresh_percent:
                                 continue_flag = 1
+                    if rmsd is not None:
+                        if np.linalg.norm(p.d[i]['rmsd'][1:]) < rmsd:
+                            continue_flag = 1
 
                     if continue_flag == 1:
                         continue
@@ -311,7 +320,6 @@ def main():
         df = pd.DataFrame.from_dict(records)
         df.to_csv(CWD/'unit_cell.csv')
 
-        # cells_to_cellparm(xdsall)
         yaml.dump(dials_all, open('cells.yaml', "w"))
 
 if __name__ == '__main__':

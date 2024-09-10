@@ -240,7 +240,8 @@ def main():
         if args:
             fns = []
             for arg in args:
-                ds = yaml.load(open(arg, "r"), Loader=yaml.Loader)
+                with open(arg, "r") as f:
+                    ds = yaml.load(f, Loader=yaml.Loader)
                 for d in ds:
                     fns.append(Path(d['directory']) / "dials.index.log")
             fns = list(set(fns))
@@ -280,7 +281,7 @@ def main():
                             if p.d[i]['percent'] - p.d[i-1]['percent'] < thresh_percent:
                                 continue_flag = 1
                     if rmsd is not None:
-                        if np.linalg.norm(p.d[i]['rmsd'][1:]) < rmsd:
+                        if np.linalg.norm(p.d[i]['rmsd'][1:]) >= rmsd:
                             continue_flag = 1
 
                     if continue_flag == 1:

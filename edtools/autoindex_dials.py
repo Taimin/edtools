@@ -69,10 +69,11 @@ def parse_dials_index(path: str, sequence: int=0) -> None:
         if dials_index_log.exists():
             try:
                 p = dials_parser(dials_index_log, job='index')
-            except UnboundLocalError:
+            except:
                 msg = f"{sequence: 4d}: {drc} -> Indexing completed but no cell reported..."
             else:
                 msg = "\n"
+                msg += f"{sequence: 4d}: {drc}\n"
                 msg += "".join(p.cell_info(sequence=sequence))
                 msg += "\n"
             print(msg)
@@ -187,19 +188,22 @@ def main():
     if args:
         fns = []
         for arg in args:
-            if arg.split('.')[-1] == "yaml":
-                ds = yaml.load(open(arg, "r"), Loader=yaml.Loader)
-                for d in ds:
-                    fns.append(Path(d['directory']) / "dials_process.bat")
-            elif arg.split('.')[-1] == "lst":
-                with open(arg, 'r') as f:
-                    lines = f.readlines()
-                    for line in lines:
-                        line = line.split('/')[-1].split('_')
-                        folder = ['_'.join(line[0:3]), '_'.join(line[3:5])]
-                        folder = '/'.join(folder)
-                        file = Path('./' + folder) / "dials_process.bat"
-                        fns.append(file)
+            if Path(arg).is_file():
+                if arg.split('.')[-1] == "yaml":
+                    ds = yaml.load(open(arg, "r"), Loader=yaml.Loader)
+                    for d in ds:
+                        fns.append(Path(d['directory']) / "dials_process.bat")
+                elif arg.split('.')[-1] == "lst":
+                    with open(arg, 'r') as f:
+                        lines = f.readlines()
+                        for line in lines:
+                            line = line.split('/')[-1].split('_')
+                            folder = ['_'.join(line[0:3]), '_'.join(line[3:5])]
+                            folder = '/'.join(folder)
+                            file = Path('./' + folder) / "dials_process.bat"
+                            fns.append(file)
+            else:
+                fns = parse_args_for_fns(arg, name="dials_process.bat", match=match)
         fns = list(set(fns))
         fns = [fn.resolve() for fn in fns]
     else:

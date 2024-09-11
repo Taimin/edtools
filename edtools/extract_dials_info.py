@@ -238,14 +238,17 @@ def main():
 
     if job == 'index':
         if args:
-            fns = []
-            for arg in args:
-                with open(arg, "r") as f:
-                    ds = yaml.load(f, Loader=yaml.Loader)
-                for d in ds:
-                    fns.append(Path(d['directory']) / "dials.index.log")
-            fns = list(set(fns))
-            fns = [fn.resolve() for fn in fns]
+            if Path(args[0]).is_file():
+                fns = []
+                for arg in args:
+                    with open(arg, "r") as f:
+                        ds = yaml.load(f, Loader=yaml.Loader)
+                    for d in ds:
+                        fns.append(Path(d['directory']) / "dials.index.log")
+                fns = list(set(fns))
+                fns = [fn.resolve() for fn in fns]
+            else:
+                fns = parse_args_for_fns(args, name="dials.index.log", match=match)
         else:
             fns = parse_args_for_fns(args, name="dials.index.log", match=match)
         dials_all = []

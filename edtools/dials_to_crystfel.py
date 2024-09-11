@@ -48,7 +48,13 @@ def process_data(index, fn, split, write_h5, lock, files, d_min, reindex=False, 
         print(f'Start processing crystal number {index}.')
         drc = fn.parent/'SMV'
         cwd_smv = str(drc)
-        if not (drc / 'indexed.expt').is_file() and not (drc / 'indexed.refl').is_file():
+
+        if not (drc / 'indexed.expt').is_file() or not (drc / 'indexed.refl').is_file():
+            if integrate:
+                if os.path.exists(drc/'integrated_1.expt'): 
+                    os.remove(drc/'integrated_1.expt')
+                if os.path.exists(drc/'integrated_1.refl'): 
+                    os.remove(drc/'integrated_1.refl')
             print(f'indexed.expt or indexed.refl file does not exist for crystal number {index}.')
             return -1
 
@@ -134,7 +140,7 @@ def process_data(index, fn, split, write_h5, lock, files, d_min, reindex=False, 
                 print("ERROR in subprocess call:", e)
 
         if integrate:
-            cmd = f'dials.ssx_integrate.bat stills.expt stills.refl prediction.d_min={d_min} mosaicity_max_limit=0.2 ellipsoid.unit_cell.fixed=True min_n_reflections=5 output.batch_size=500 nproc=2'
+            cmd = f'dials.ssx_integrate.bat stills.expt stills.refl prediction.d_min={d_min} mosaicity_max_limit=0.2 ellipsoid.unit_cell.fixed=True min_n_reflections=3 output.batch_size=500 nproc=2'
             try:
                 p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
                 p.communicate()

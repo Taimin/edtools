@@ -203,7 +203,13 @@ def main():
                             file = Path('./' + folder) / "dials_process.bat"
                             fns.append(file)
             else:
-                fns = parse_args_for_fns(arg, name="dials_process.bat", match=match)
+                if not isinstance(arg, list):
+                    tmp = []
+                    tmp.append(arg)
+                    arg = tmp
+                print(arg)
+                tmp = parse_args_for_fns(arg, name="dials_process.bat", match=match)
+                fns = fns + tmp
         fns = list(set(fns))
         fns = [fn.resolve() for fn in fns]
     else:

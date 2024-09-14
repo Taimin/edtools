@@ -41,29 +41,35 @@ def lattice_type_sym(lattice, unique_axis='c'):
         warn('Invalid lattice type {}'.format(lattice))
         return 'invalid'
 
-def process_data(index, fn, split, write_h5, lock, files, d_min, gain=1, reindex=False, refine=False, integrate=False, \
+def process_data(index, fn, split, write_h5, lock, files, d_min, reindex=False, refine=False, integrate=False, \
                 integrate_sweep=False, scale_sweep=False, file_exists=False, space_group=None, write_sol=False, merge=False,
-                single_crystal=True):
+                single_crystal=True, gain=1):
     try:
         print(f'Start processing crystal number {index}.')
         drc = fn.parent/'SMV'
         cwd_smv = str(drc)
-        if not (drc / 'indexed.expt').is_file() and not (drc / 'indexed.refl').is_file():
+
+        if not (drc / 'indexed.expt').is_file() or not (drc / 'indexed.refl').is_file():
+            if integrate:
+                if os.path.exists(drc/'integrated_1.expt'): 
+                    os.remove(drc/'integrated_1.expt')
+                if os.path.exists(drc/'integrated_1.refl'): 
+                    os.remove(drc/'integrated_1.refl')
             print(f'indexed.expt or indexed.refl file does not exist for crystal number {index}.')
             return -1
 
-        #if reindex:
-        #    print(f'Start reindex {fn}')
-        #    if space_group is None:
-        #        pass
-        #    else:
-        #        cmd = f'dials.reindex.bat indexed.expt indexed.refl space_group={space_group}'
-        #    try:
-        #        print(cmd)
-        #        p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
-        #        p.communicate()
-        #    except Exception as e:
-        #        print("ERROR in subprocess call:", e)
+        if reindex:
+            print(f'Start reindex {fn}')
+            if space_group is None:
+                pass
+            else:
+                cmd = f'dials.reindex.bat indexed.expt indexed.refl space_group={space_group}'
+            try:
+                print(cmd)
+                p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
+                p.communicate()
+            except Exception as e:
+                print("ERROR in subprocess call:", e)
         if refine:
             print(f'Start refine {fn}')
             if reindex:
@@ -83,16 +89,16 @@ def process_data(index, fn, split, write_h5, lock, files, d_min, gain=1, reindex
             print(f'Start split {fn}')
             if refine:
                 if (drc / 'refined.expt').is_file():
-                    cmd = 'dials.sequence_to_stills.bat refined.expt refined.refl'
+                    cmd = f'dials.sequence_to_stills.bat refined.expt refined.refl detector.gain={gain}'
                 else:
-                    cmd = 'dials.sequence_to_stills.bat indexed.expt indexed.refl'
+                    cmd = f'dials.sequence_to_stills.bat indexed.expt indexed.refl detector.gain={gain}'
             elif reindex:
                 if (drc / 'reindexed.expt').is_file():
-                    cmd = 'dials.sequence_to_stills.bat reindexed.expt reindexed.refl'
+                    cmd = f'dials.sequence_to_stills.bat reindexed.expt reindexed.refl detector.gain={gain}'
                 else:
-                    cmd = 'dials.sequence_to_stills.bat indexed.expt indexed.refl'
+                    cmd = f'dials.sequence_to_stills.bat indexed.expt indexed.refl detector.gain={gain}'
             else:
-                cmd = 'dials.sequence_to_stills.bat indexed.expt indexed.refl'
+                cmd = f'dials.sequence_to_stills.bat indexed.expt indexed.refl detector.gain={gain}'
             try:
                 print(cmd)
                 p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
@@ -134,7 +140,7 @@ def process_data(index, fn, split, write_h5, lock, files, d_min, gain=1, reindex
                 print("ERROR in subprocess call:", e)
 
         if integrate:
-            cmd = f'dials.ssx_integrate.bat stills.expt stills.refl prediction.d_min={d_min} detector_gain={gain} mosaicity_max_limit=0.2 ellipsoid.unit_cell.fixed=True min_n_reflections=5 nproc=2'
+            cmd = f'dials.ssx_integrate.bat stills.expt stills.refl prediction.d_min={d_min} mosaicity_max_limit=0.2 ellipsoid.unit_cell.fixed=True min_n_reflections=3 output.batch_size=500 nproc=2'
             try:
                 p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
                 p.communicate()
@@ -144,17 +150,17 @@ def process_data(index, fn, split, write_h5, lock, files, d_min, gain=1, reindex
             if not (drc/'integrated_1.refl').is_file():
                 print(f"{drc/'integrated_1.refl'} file does not exist.")
                 return -1
-            if space_group is not None:
-                cmd = f'dials.reindex.bat integrated_1.refl integrated_1.expt space_group={space_group} output.experiments=re_integrated_1.expt output.reflections=re_integrated_1.refl'
-                try:
-                    print(f'Start changing space group for {fn}')
-                    p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
-                    p.communicate()
-                    target = list(drc.glob('re_integrated_1.expt'))[0]
-                except Exception as e:
-                    print("ERROR in subprocess call:", e)
-            elif space_group is None:
-                target = list(drc.glob('integrated_1.expt'))[0]
+            #if space_group is not None:
+            #    cmd = f'dials.reindex.bat integrated_1.refl integrated_1.expt space_group={space_group} output.experiments=re_integrated_1.expt output.reflections=re_integrated_1.refl'
+            #    try:
+            #        print(f'Start changing space group for {fn}')
+            #        p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
+            #        p.communicate()
+            #        target = list(drc.glob('re_integrated_1.expt'))[0]
+            #    except Exception as e:
+            #        print("ERROR in subprocess call:", e)
+            #elif space_group is None:
+            target = list(drc.glob('integrated_1.expt'))[0]
 
             if scale_sweep:
                 target_1 = list(drc.glob('integrated.expt'))[0]
@@ -227,15 +233,15 @@ def process_data(index, fn, split, write_h5, lock, files, d_min, gain=1, reindex
     except:
         traceback.print_exc()
 
-def run_parallel(fns, split, write_h5, lock, d_min, gain, thresh, reindex=False, refine=False, merge=False, integrate=False, \
-                integrate_sweep=False, scale_sweep=False, file_exists=False, space_group=None, write_sol=False, single_crystal=True,
+def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refine=False, merge=False, integrate=False, \
+                integrate_sweep=False, scale_sweep=False, file_exists=False, space_group=None, write_sol=False, single_crystal=True, gain=1,
                 reference=None):
     futures = []
     FILES = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         for index, fn in enumerate(fns):
             futures.append(executor.submit(process_data, index, fn, split, write_h5, lock, FILES, d_min, gain, reindex, refine, integrate,\
-                                         integrate_sweep, scale_sweep, file_exists, space_group, write_sol, merge, single_crystal))
+                                         integrate_sweep, scale_sweep, file_exists, space_group, write_sol, merge, single_crystal, gain))
     concurrent.futures.wait(futures, return_when=concurrent.futures.ALL_COMPLETED)
 
     if merge:
@@ -260,8 +266,8 @@ def run_parallel(fns, split, write_h5, lock, d_min, gain, thresh, reindex=False,
             print("}", file=f)
             print('multiprocessing.nproc = 8', file=f)
             print('clustering {', file=f)
-            print(f'  absolute_angle_tolerance=1.5', file=f)
-            print(f'  absolute_length_tolerance=1', file=f)
+            print(f'  absolute_angle_tolerance=None', file=f)
+            print(f'  absolute_length_tolerance=None', file=f)
             print('}', file=f)
             print(f'partiality_threshold = {thresh}', file=f)
             print(f'd_min = {d_min}', file=f)
@@ -319,8 +325,8 @@ def main():
                         action="store", type=bool, dest="reindex",
                         help="Convert reindex results instead of index results")
 
-    parser.add_argument("-i", "--input_file",
-                        action="store", type=bool, dest="input_file",
+    parser.add_argument("-f", "--file_exists",
+                        action="store", type=bool, dest="file_exists",
                         help="A input file that list all the directories")
 
     parser.add_argument("-int", "--integrate",
@@ -347,10 +353,6 @@ def main():
                         action="store", type=float, dest="d_min",
                         help="Minimum distance for ssx_reduce.")
 
-    parser.add_argument("-g", "--gain",
-                        action="store", type=float, dest="gain",
-                        help="Input the gain for sigma adjustment.")
-
     parser.add_argument("-t", "--thresh",
                         action="store", type=float, dest="thresh",
                         help="Partiality threshold for dials.export.")
@@ -367,12 +369,16 @@ def main():
                         action="store", type=bool, dest="single_crystal",
                         help="Only use single crystals.")
 
+    parser.add_argument("-g", "--gain",
+                        action="store", type=float, dest="gain",
+                        help="Gain used in integration.")
+
     parser.add_argument("-ref", "--reference",
                         action="store", type=str, dest="reference",
                         help="Reference during scaling.")
 
     parser.set_defaults(split=False, write_h5=False, reindex=False, refine=False, d_min=0.8, thresh=0.6, 
-                        input_file=False, space_group=None, write_sol=False, single_crystal=True, reference=None)
+                        file_exists=False, space_group=None, write_sol=False, single_crystal=False, gain=1, reference=None)
 
     options = parser.parse_args()
     args = options.args
@@ -380,10 +386,9 @@ def main():
     split = options.split
     write_h5 = options.write_h5
     reindex = options.reindex
-    input_file = options.input_file
+    file_exists = options.file_exists
     refine = options.refine
     d_min = options.d_min
-    gain = options.gain
     thresh = options.thresh
     merge = options.merge
     integrate = options.integrate
@@ -392,6 +397,7 @@ def main():
     write_sol = options.write_sol
     scale_sweep = options.scale_sweep
     single_crystal = options.single_crystal
+    gain = options.gain
     reference = options.reference
 
     if args:
@@ -416,13 +422,13 @@ def main():
 
     (CWD/'h5').mkdir(parents=True, exist_ok=True)
 
-    if not input_file:
+    if not file_exists:
         with open(CWD / "files.lst", "w") as f:
             pass
 
     with open(CWD / "indexed.sol", "w") as f:
         pass
     lock = threading.Lock()
-    run_parallel(fns, split, write_h5, lock, d_min, gain, thresh, reindex, refine, merge, integrate, integrate_sweep, \
-                scale_sweep, input_file, space_group, write_sol, single_crystal, reference)
+    run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex, refine, merge, integrate, integrate_sweep, \
+                scale_sweep, file_exists, space_group, write_sol, single_crystal, gain, reference)
     print(f"\033[KUpdated {len(fns)} files")

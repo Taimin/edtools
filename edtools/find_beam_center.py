@@ -129,7 +129,7 @@ def find_peak_max(arr: np.ndarray, sigma: int, m: int = 50, w: int = 10, kind: i
 
     return c2 + c1 - w
 
-def find_beam_center(img: np.ndarray, sigma: int = 30, m: int = 100, kind: int = 3, thresh: int = 7000) -> (float, float):
+def find_beam_center(img: np.ndarray, sigma: int = 30, m: int = 100, kind: int = 3, thresh: int = 5000) -> (float, float):
     """Find the center of the primary beam in the image `img` The position is
     determined by summing along X/Y directions and finding the position along
     the two directions independently.

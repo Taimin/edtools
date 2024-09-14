@@ -69,10 +69,11 @@ def parse_dials_index(path: str, sequence: int=0) -> None:
         if dials_index_log.exists():
             try:
                 p = dials_parser(dials_index_log, job='index')
-            except UnboundLocalError:
+            except:
                 msg = f"{sequence: 4d}: {drc} -> Indexing completed but no cell reported..."
             else:
                 msg = "\n"
+                msg += f"{sequence: 4d}: {drc}\n"
                 msg += "".join(p.cell_info(sequence=sequence))
                 msg += "\n"
             print(msg)
@@ -81,7 +82,7 @@ def parse_dials_index(path: str, sequence: int=0) -> None:
             if msg is not None:
                 print(msg, file=f)
 
-def process_data(i, fn, job, restrain, use_server):
+def process_data(i, fn, job, restrain, find_spot, use_server, only_index):
     drc = fn.parent
     if use_server:
         connect(drc)
@@ -93,7 +94,19 @@ def process_data(i, fn, job, restrain, use_server):
             with open(drc/'restrain.phil', 'w') as f:
                 print('indexing {', file=f)
                 print('}', file=f)
+        if find_spot:
+            shutil.copy(str(CWD/'find_spot.phil'), str(drc/'find_spot.phil'))
+        else:
+            with open(drc/'find_spot.phil', 'w') as f:
+                print('spotfinder {', file=f)
+                print('}', file=f)
         cmd = str(drc/"dials_process.bat")
+        if only_index:
+            cmd = 'dials.index.bat imported.expt strong.refl restrain.phil nproc=2'
+        if os.path.exists(drc/'indexed.expt'): 
+            os.remove(drc/'indexed.expt')
+        if os.path.exists(drc/'indexed.refl'): 
+            os.remove(drc/'indexed.refl')
         try:
             p = sp.Popen(cmd, cwd=cwd, stdout=DEVNULL)
             p.communicate()
@@ -136,13 +149,28 @@ def main():
 
     parser.add_argument("-r", "--restrain",
                         action="store", type=bool, dest="restrain",
-                        help="If True, copy the restrain.phil file to each dials directory")
+                        help="If True, copy the restrain.phil file for indexing to each dials directory")
+
+    parser.add_argument("-f", "--find_spot",
+                        action="store", type=bool, dest="find_spot",
+                        help="If True, copy the find_spot.phil file to each dials directory")
+
+    parser.add_argument("-min", "--min_spots",
+                        action="store", type=int, dest="min_spots",
+                        help="If True, copy the find_spot.phil file to each dials directory")
+
+    parser.add_argument("-oi", "--only_index",
+                        action="store", type=bool, dest="only_index",
+                        help="Only index")
 
     parser.set_defaults(use_server=False,
                         match=None,
                         unprocessed_only=False,
                         job='index',
                         restrain=False,
+                        find_spot=False,
+                        min_spots=None,
+                        only_index=False
                         )
 
     options = parser.parse_args()
@@ -153,23 +181,36 @@ def main():
     job = options.job
     args = options.args
     restrain = options.restrain
+    find_spot = options.find_spot
+    min_spots = options.min_spots
+    only_index = options.only_index
 
     if args:
         fns = []
         for arg in args:
-            if arg.split('.')[-1] == "yaml":
-                ds = yaml.load(open(arg, "r"), Loader=yaml.Loader)
-                for d in ds:
-                    fns.append(Path(d['directory']) / "dials_process.bat")
-            elif arg.split('.')[-1] == "lst":
-                with open(arg, 'r') as f:
-                    lines = f.readlines()
-                    for line in lines:
-                        line = line.split('/')[-1].split('_')
-                        folder = ['_'.join(line[0:3]), '_'.join(line[3:5])]
-                        folder = '/'.join(folder)
-                        file = Path('./' + folder) / "dials_process.bat"
-                        fns.append(file)
+            if Path(arg).is_file():
+                if arg.split('.')[-1] == "yaml":
+                    ds = yaml.load(open(arg, "r"), Loader=yaml.Loader)
+                    for d in ds:
+                        fns.append(Path(d['directory']) / "dials_process.bat")
+                elif arg.split('.')[-1] == "lst":
+                    with open(arg, 'r') as f:
+                        lines = f.readlines()
+                        for line in lines:
+                            line = line.split('/')[-1].split('_')
+                            folder = ['_'.join(line[0:3]), '_'.join(line[3:5])]
+                            folder = '/'.join(folder)
+                            file = Path('./' + folder) / "dials_process.bat"
+                            fns.append(file)
+            else:
+                if not isinstance(arg, list):
+                    tmp = []
+                    tmp.append(arg)
+                    arg = tmp
+                print(arg)
+                tmp = parse_args_for_fns(arg, name="dials_process.bat", match=match)
+                fns = fns + tmp
+        fns = list(set(fns))
         fns = [fn.resolve() for fn in fns]
     else:
         fns = parse_args_for_fns(args, name="dials_process.bat", match=match)
@@ -186,10 +227,27 @@ def main():
     with open(CWD / "index_results.log", "w") as f:
         pass
 
+    if min_spots is not None:
+        with open(CWD / 'find_spot.phil', 'w') as f:
+            print('spotfinder {', file=f)
+            print('  filter {', file=f)
+            print(f'    min_spot_size = {min_spots}', file=f)
+            print('    max_spot_size = 100', file=f)
+            print('  }', file=f)
+            print('  threshold {', file=f)
+            print('    algorithm = *dispersion dispersion_extended radial_profile', file=f)
+            print('    dispersion {', file=f)
+            print('      gain = 1', file=f)
+            print('      sigma_strong = 3', file=f)
+            print('      global_threshold = 1', file=f)
+            print('    }', file=f)
+            print('  }', file=f)
+            print('}', file=f)
+
     futures = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         for i, fn in enumerate(fns):
-            futures.append(executor.submit(process_data, i, fn, job, restrain, use_server))
+            futures.append(executor.submit(process_data, i, fn, job, restrain, find_spot, use_server, only_index))
     concurrent.futures.wait(futures, return_when=concurrent.futures.ALL_COMPLETED)
         
 

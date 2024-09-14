@@ -15,13 +15,11 @@ CWD = Path(os.getcwd())
 
 class dials_parser:
     """docstring for dials_parser"""
-    def __init__(self, filename, job='index'):
-        self.ios_threshold = 0.8
-
+    def __init__(self, filename, job='index', use_refined=False):
         self.filename = Path(filename).resolve()
-        self.d = self.parse(job)
+        self.d = self.parse(job, use_refined)
 
-    def parse(self, job):
+    def parse(self, job, use_refined):
         fn = self.filename
         with open(fn, "r") as f:
             lines = f.readlines()
@@ -29,28 +27,69 @@ class dials_parser:
         crystals = []
         line_start = []
         line_end = []
+        interval = []
+        tmp = []
+        tmp1 = []
+        rmsd_start = []
+        rmsds = []
+
 
         d = {}
         d_list = []
 
-        for index, line in enumerate(lines):
-            if line.startswith("Indexed crystal models:"):
-                line_start.append(index)
-            elif line.startswith("Starting refinement (macro-cycle 1)"):
-                line_end.append(index)
+        if use_refined:
+            for index, line in enumerate(lines):
+                if line.startswith("Refined crystal models:"):
+                    line_start.append(index)
+                elif line.startswith("Setting d_min:") or line.startswith("Finish searching for more lattices:") or \
+                    line.startswith("Change of basis op:"):
+                    line_end.append(index)
+                elif line.startswith("RMSDs by experiment:"):
+                    rmsd_start.append(index)
+            try:
+                tmp = lines[line_start[-1]:line_end[-1]]
+                tmp1 = lines[rmsd_start[-1]:line_start[-1]]
+            except:
+                pass
 
-        for start, end in zip(line_start, line_end):
-            if end > start:
-                crystals.append(lines[start:end])
-            else:
-                print('Check the index.log file')
-                return -1
-                
-        for crystal in crystals:
+            for index, line in enumerate(tmp):
+                if line.startswith("model "):
+                    interval.append(index)
+                if line.startswith("|   Imageset"):
+                    infos = [info.strip() for info in tmp[index+2].split('|')]
+                    total_spots = int(infos[2]) + int(infos[3])
+            interval.append(index)
+            if len(interval) > 1:
+                for i in range(len(interval)-1):
+                    crystals.append(tmp[interval[i]:interval[i+1]])
+
+            for index, line in enumerate(tmp1):
+                if line.startswith("|     "):
+                    line = line.split('|')
+                    rmsds.append([int(line[2]), float(line[3]), float(line[4]), float(line[4])])
+            last_indexed_spots = 0
+        else:
+            for index, line in enumerate(lines):
+                if line.startswith("Indexed crystal models:"):
+                    line_start.append(index)
+                elif line.startswith("Starting refinement (macro-cycle 1)"):
+                    line_end.append(index)
+            for start, end in zip(line_start, line_end):
+                if end > start:
+                    crystals.append(lines[start:end])
+                else:
+                    print('Check the index.log file')
+                    return -1
+        for i, crystal in enumerate(crystals):
             cell, spgr = None, None
             for index, line in enumerate(crystal):
                 if line.startswith("model"):
                     model_num = int(line.split()[1])
+                    if use_refined:
+                        d['indexed'] = int(line.split()[2][1:]) + last_indexed_spots
+                        d['unindexed'] = int(total_spots - d['indexed'])
+                        d['percent'] = d['indexed'] / total_spots
+                        last_indexed_spots = d['indexed']
                 elif line.startswith("    Unit cell"):
                     line = re.sub(r'\([^)]*\)', '', line)
                     line = line.strip("\n").split()[2:8]
@@ -58,7 +97,7 @@ class dials_parser:
                     cell = list(map(float, line))
                 elif line.startswith("    Space group"):
                     spgr = ''.join(line.strip("\n").split()[2:])
-                elif line.startswith("|   Imageset"):
+                elif line.startswith("|   Imageset") and not use_refined:
                     infos = [info.strip() for info in crystal[index+2].split('|')]
                     d['indexed'] = int(infos[2])
                     d['unindexed'] = int(infos[3])
@@ -81,8 +120,12 @@ class dials_parser:
             d["model_num"] = model_num
             d['A_matrix'] = A_matrix
             d["fn"] = str(os.path.relpath(fn.parent, CWD))
+            if use_refined:
+                try:
+                    d["rmsd"] = rmsds[i]
+                except IndexError:
+                    d["rmsd"] = []
             d_list.append(copy.deepcopy(d))
-        
         return d_list
 
     def cell_info(self, sequence=0):
@@ -127,24 +170,6 @@ class dials_parser:
 
         return s
 
-def cells_to_yaml(ps, fn="cells.yaml"):
-    ds = []
-    for i, p in enumerate(ps):
-        i += 1
-        d = {}
-        for crystal in p.d:
-            d["directory"] = crystal["fn"]
-            d["number"] = i
-            d["unit_cell"] = crystal["cell"]
-            d["space_group"] = crystal["spgr"]
-            d["indexed"] = crystal["indexed"]
-            d["percent"] = crystal["percent"]
-            ds.append(d)
-
-    yaml.dump(ds, open(fn, "w"))
-
-    print(f"Wrote {i} cells to file {fn}")
-
 
 def main():
     import argparse
@@ -183,7 +208,20 @@ def main():
                         action="store", type=float, dest="thresh_percent",
                         help="Threshold based on percentage of indexed spots.")
 
-    parser.set_defaults(match=None, gather=False, job='index', single_crystal=False, thresh_percent=None, thresh_indexed=None)
+    parser.add_argument("-a_p", "--add_path",
+                        action="store", type=str, dest="add_path",
+                        help="Add path.")
+
+    parser.add_argument("-u_r", "--use_refined",
+                        action="store", type=bool, dest="use_refined",
+                        help="Use refined unit cell.")
+
+    parser.add_argument("-r", "--rmsd",
+                        action="store", type=float, dest="rmsd",
+                        help="Set an rmsdthreshold.")
+
+    parser.set_defaults(match=None, gather=False, job='index', single_crystal=False, thresh_percent=None, thresh_indexed=None, 
+                        add_path=None, use_refined=False, rmsd=None)
 
     options = parser.parse_args()
 
@@ -194,15 +232,23 @@ def main():
     single_crystal = options.single_crystal
     thresh_percent = options.thresh_percent
     thresh_indexed = options.thresh_indexed
+    add_path = options.add_path
+    use_refined = options.use_refined
+    rmsd = options.rmsd
 
     if job == 'index':
         if args:
-            fns = []
-            for arg in args:
-                ds = yaml.load(open(arg, "r"), Loader=yaml.Loader)
-                for d in ds:
-                    fns.append(Path(d['directory']) / "dials.index.log")
-            fns = [fn.resolve() for fn in fns]
+            if Path(args[0]).is_file():
+                fns = []
+                for arg in args:
+                    with open(arg, "r") as f:
+                        ds = yaml.load(f, Loader=yaml.Loader)
+                    for d in ds:
+                        fns.append(Path(d['directory']) / "dials.index.log")
+                fns = list(set(fns))
+                fns = [fn.resolve() for fn in fns]
+            else:
+                fns = parse_args_for_fns(args, name="dials.index.log", match=match)
         else:
             fns = parse_args_for_fns(args, name="dials.index.log", match=match)
         dials_all = []
@@ -210,9 +256,9 @@ def main():
         cnt = 0
         for fn in fns:
             try:
-                p = dials_parser(fn, job=job)
+                p = dials_parser(fn, job=job, use_refined=use_refined)
             except UnboundLocalError as e:
-                print(e)
+                print(fn, e)
                 continue
             if p and p.d:
                 if single_crystal:
@@ -237,11 +283,17 @@ def main():
                         else:
                             if p.d[i]['percent'] - p.d[i-1]['percent'] < thresh_percent:
                                 continue_flag = 1
+                    if rmsd is not None:
+                        if np.linalg.norm(p.d[i]['rmsd'][1:]) >= rmsd:
+                            continue_flag = 1
 
                     if continue_flag == 1:
                         continue
 
-                    crystal["directory"] = p.d[i]["fn"]
+                    if add_path is None:
+                        crystal["directory"] = p.d[i]["fn"]
+                    else:
+                        crystal["directory"] = str(add_path/Path(p.d[i]["fn"]))
                     crystal["number"] = cnt
                     crystal["unit_cell"] = p.d[i]["cell"]
                     crystal["space_group"] = p.d[i]["spgr"]
@@ -272,7 +324,6 @@ def main():
         df = pd.DataFrame.from_dict(records)
         df.to_csv(CWD/'unit_cell.csv')
 
-        # cells_to_cellparm(xdsall)
         yaml.dump(dials_all, open('cells.yaml', "w"))
 
 if __name__ == '__main__':

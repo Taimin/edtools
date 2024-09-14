@@ -240,7 +240,7 @@ def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refin
     FILES = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         for index, fn in enumerate(fns):
-            futures.append(executor.submit(process_data, index, fn, split, write_h5, lock, FILES, d_min, gain, reindex, refine, integrate,\
+            futures.append(executor.submit(process_data, index, fn, split, write_h5, lock, FILES, d_min, reindex, refine, integrate,\
                                          integrate_sweep, scale_sweep, file_exists, space_group, write_sol, merge, single_crystal, gain))
     concurrent.futures.wait(futures, return_when=concurrent.futures.ALL_COMPLETED)
 

@@ -41,7 +41,7 @@ def lattice_type_sym(lattice, unique_axis='c'):
         warn('Invalid lattice type {}'.format(lattice))
         return 'invalid'
 
-def process_data(index, fn, split, write_h5, lock, files, d_min, reindex=False, refine=False, integrate=False, \
+def process_data(index, fn, split, write_h5, lock, files, d_min, gain=1, reindex=False, refine=False, integrate=False, \
                 integrate_sweep=False, scale_sweep=False, file_exists=False, space_group=None, write_sol=False, merge=False,
                 single_crystal=True):
     try:
@@ -134,7 +134,7 @@ def process_data(index, fn, split, write_h5, lock, files, d_min, reindex=False, 
                 print("ERROR in subprocess call:", e)
 
         if integrate:
-            cmd = f'dials.ssx_integrate.bat stills.expt stills.refl prediction.d_min={d_min} mosaicity_max_limit=0.2 ellipsoid.unit_cell.fixed=True min_n_reflections=5 nproc=2'
+            cmd = f'dials.ssx_integrate.bat stills.expt stills.refl prediction.d_min={d_min} detector_gain={gain} mosaicity_max_limit=0.2 ellipsoid.unit_cell.fixed=True min_n_reflections=5 nproc=2'
             try:
                 p = subprocess.Popen(cmd, cwd=cwd_smv, stdout=DEVNULL)
                 p.communicate()
@@ -227,14 +227,14 @@ def process_data(index, fn, split, write_h5, lock, files, d_min, reindex=False, 
     except:
         traceback.print_exc()
 
-def run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex=False, refine=False, merge=False, integrate=False, \
+def run_parallel(fns, split, write_h5, lock, d_min, gain, thresh, reindex=False, refine=False, merge=False, integrate=False, \
                 integrate_sweep=False, scale_sweep=False, file_exists=False, space_group=None, write_sol=False, single_crystal=True,
                 reference=None):
     futures = []
     FILES = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         for index, fn in enumerate(fns):
-            futures.append(executor.submit(process_data, index, fn, split, write_h5, lock, FILES, d_min, reindex, refine, integrate,\
+            futures.append(executor.submit(process_data, index, fn, split, write_h5, lock, FILES, d_min, gain, reindex, refine, integrate,\
                                          integrate_sweep, scale_sweep, file_exists, space_group, write_sol, merge, single_crystal))
     concurrent.futures.wait(futures, return_when=concurrent.futures.ALL_COMPLETED)
 
@@ -347,6 +347,10 @@ def main():
                         action="store", type=float, dest="d_min",
                         help="Minimum distance for ssx_reduce.")
 
+    parser.add_argument("-g", "--gain",
+                        action="store", type=float, dest="gain",
+                        help="Input the gain for sigma adjustment.")
+
     parser.add_argument("-t", "--thresh",
                         action="store", type=float, dest="thresh",
                         help="Partiality threshold for dials.export.")
@@ -379,6 +383,7 @@ def main():
     input_file = options.input_file
     refine = options.refine
     d_min = options.d_min
+    gain = options.gain
     thresh = options.thresh
     merge = options.merge
     integrate = options.integrate
@@ -418,6 +423,6 @@ def main():
     with open(CWD / "indexed.sol", "w") as f:
         pass
     lock = threading.Lock()
-    run_parallel(fns, split, write_h5, lock, d_min, thresh, reindex, refine, merge, integrate, integrate_sweep, \
+    run_parallel(fns, split, write_h5, lock, d_min, gain, thresh, reindex, refine, merge, integrate, integrate_sweep, \
                 scale_sweep, input_file, space_group, write_sol, single_crystal, reference)
     print(f"\033[KUpdated {len(fns)} files")

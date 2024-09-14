@@ -668,7 +668,7 @@ def main():
                         distance=None,
                         method="average",
                         metric="euclidean",
-                        use_raw_cell=False,
+                        use_raw_cell=True,
                         use_radian_for_clustering=False,
                         use_sine_for_clustering=False)
     
@@ -699,6 +699,7 @@ def main():
         for i in range(0, len(cells)):
             raw_cell = unify(cells[i, :])
             raw_cells.append(raw_cell)
+        cells = raw_cells
     try:
         weights = np.array([d["indexed"] for d in ds])
     except:

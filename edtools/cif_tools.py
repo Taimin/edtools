@@ -73,7 +73,10 @@ def update_cif(fn,
         elif "_diffrn_reflns_theta_full" in line:
             reflection_theta_full =  float(line.split()[-1])
         elif "_diffrn_reflns_av_R_equivalents" in line:
-            Rint = float(line.split()[-1])
+            try:
+                Rint = float(line.split()[-1])
+            except ValueError:
+                Rint = 0
         elif "_refine_ls_wR_factor_ref" in line:
             wR2 = float(line.split()[-1])
         elif "_refine_ls_R_factor_gt" in line:
@@ -161,13 +164,14 @@ def update_cif(fn,
     if reply:
         new_lines.append("# start Validation Reply Form\n")
 
-        if Rint > 0.12 and Rint <= 0.18:
-            answer = f"_vrf_RINTA01_{file_name}\n;PROBLEM: The value of Rint is greater than 0.12\nRESPONSE: Relatively higher R-values are common for electron diffraction due \nto multiple scattering.\n;\n"
-        elif Rint > 0.18 and Rint <= 0.25:
-            answer = f"_vrf_RINTA01_{file_name}\n;PROBLEM: The value of Rint is greater than 0.18\nRESPONSE: Relatively higher R-values are common for electron diffraction due \nto multiple scattering.\n;\n"
-        elif Rint > 0.25:
-            answer = f"_vrf_RINTA01_{file_name}\n;PROBLEM: The value of Rint is greater than 0.25\nRESPONSE: Relatively higher R-values are common for electron diffraction due \nto multiple scattering.\n;\n"
-        new_lines.append(answer)
+        if Rint != 0:
+            if Rint > 0.12 and Rint <= 0.18:
+                answer = f"_vrf_RINTA01_{file_name}\n;PROBLEM: The value of Rint is greater than 0.12\nRESPONSE: Relatively higher R-values are common for electron diffraction due \nto multiple scattering.\n;\n"
+            elif Rint > 0.18 and Rint <= 0.25:
+                answer = f"_vrf_RINTA01_{file_name}\n;PROBLEM: The value of Rint is greater than 0.18\nRESPONSE: Relatively higher R-values are common for electron diffraction due \nto multiple scattering.\n;\n"
+            elif Rint > 0.25:
+                answer = f"_vrf_RINTA01_{file_name}\n;PROBLEM: The value of Rint is greater than 0.25\nRESPONSE: Relatively higher R-values are common for electron diffraction due \nto multiple scattering.\n;\n"
+            new_lines.append(answer)
 
         if Rint > 0.12:
             answer = f"_vrf_PLAT020_{file_name}\n;PROBLEM: The Value of Rint is Greater Than 0.12 .........      {Rint:.3f} Report\nRESPONSE: Relatively higher R-values are common for electron diffraction due \nto multiple scattering.\n;\n" 

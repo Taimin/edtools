@@ -263,7 +263,7 @@ def get_clusters(z, distance=0.5, fns=[], method="average", min_size=1):
 
     cluster_dict = {}
     for key, items in grouped.items():
-        if len(items) <= min_size:
+        if len(items) < min_size:
             continue
 
         cluster_dict[key] = {"n_clust": len(items), "clust": [item+1 for item in items],  # use 1-based indexing for output
@@ -437,7 +437,7 @@ def main():
                         resolution=None,
                         ioversigma=2,
                         show_dendrogram_only=False,
-                        min_size=1,
+                        min_size=2,
                         sigma=None,
                         cc_half=None,
                         reindex=None)

@@ -123,8 +123,7 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
                 header['TWOTHETA'] = 0.00
                 header['PHI'] = f'{phi:.4f}'
                 header['OSC_START'] = f'{phi:.4f}'
-                osc_angle = osc_angle * select_n
-                header['OSC_RANGE'] = f'{osc_angle:.4f}'
+                header['OSC_RANGE'] = f'{osc_angle * select_n:.4f}'
                 header['WAVELENGTH'] = f'{wavelength:.4f}'
                 # reverse XY coordinates for XDS
                 header['BEAM_CENTER_X'] = f'{update_cent_x*physical_pixelsize:.4f}'
@@ -233,7 +232,7 @@ def update_dials(fn, wavelength, physical_pixelsize, pixelsize, exposure, phi, o
             print(s, file=f)
             for name in img_list:
                 fn = f'{name}.tiff'
-                angle = phi + osc_angle * (int(name) - 1)
+                angle = phi + osc_angle * (int(name) * select_n - 1)
                 print(f'{tiff_folder}/{fn} {angle:10.4f} 0.00', file=f)
             print('endimagelist', file=f)
 
